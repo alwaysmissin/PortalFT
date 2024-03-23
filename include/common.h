@@ -9,5 +9,7 @@
 #include <netdb.h>
 #include <string.h>
 
+#include <macro.h>
+
 #define MAXLINE 128
 #endif
