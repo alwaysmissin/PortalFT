@@ -3,6 +3,7 @@
 #include <config.h>
 #include <server.h>
 #include <client.h>
+#include <portalfile.h>
 #include <readline/history.h>
 #include <readline/readline.h>
 
@@ -32,6 +33,12 @@ static struct {
     {"config" , "set the target config as the value, usage: config <option> <value>", cmd_config},
     {"listen" , "listen connection", cmd_listen},
     {"connect", "connect to the server, usage: connect <host>", cmd_connect},
+    {"send"   , "send message or file", cmd_send},
+    {"receive", "receive message or file", cmd_receive},
+    {"close"  , "close the connection", cmd_close_conn},
+    {"add"    , "add file to the sending list", cmd_add},
+    {"list"   , "list all files in the sending list", cmd_list}
+
 };
 
 #define NR_CMD ARRLEN(cmd_table)
@@ -60,6 +67,7 @@ static int cmd_help(char *args) {
 }
 
 static int cmd_quit(char *args){
+    close(connfd);
     exit(0);
 }
 
@@ -75,6 +83,10 @@ static int cmd_config(char *args){
 }
 
 static int cmd_listen(char *args){
+    if (connfd){
+        printf("Please close the connection first\n");
+        return 0;
+    }
     connfd = listen_as_server(get_config("port"));
 }
 
@@ -83,9 +95,66 @@ static int cmd_connect(char *args){
         printf("Usage: connect <ip>\n");
         return 0;
     }
+    if (connfd){
+        printf("Please close the connection first\n");
+        return 0;
+    }
     char *host = strtok(NULL, " ");
 
     connfd = connect_as_client(host, get_config("port"));
+    printf("Connected to %s:%s on fd %d\n", host, get_config("port"), connfd);
+}
+
+static int cmd_close_conn(char *args){
+    if (connfd == 0){
+        printf("Please connect to the server first\n");
+        return 0;
+    }
+    close(connfd);
+    connfd = 0;
+    printf("Connection closed\n");
+}
+
+static int cmd_send(char *args){
+    if (connfd == 0){
+        printf("Please connect to the server first\n");
+        return 0;
+    }
+    // if (args != NULL){
+    //     // write(connfd, args, strlen(args));
+    //     send(connfd, args, strlen(args), 0);
+    // }
+    send_files(connfd);
+}
+
+static int cmd_receive(char *args){
+    if (connfd == 0){
+        printf("Please connect to the server first\n");
+        return 0;
+    }
+    // char buf[1024];
+    // // int n = read(connfd, buf, sizeof(buf));
+    // int n = recv(connfd, buf, sizeof(buf), 0);
+    // if (n > 0){
+    //     buf[n] = '\0';
+    //     printf("%s\n", buf);
+    // }
+    recv_files(connfd);
+    return 0;
+}
+
+static int cmd_add(char *args){
+    if (args == NULL){
+        printf("Usage: add <filename>\n");
+        return 0;
+    }
+    char *filename = strtok(NULL, " ");
+    add_file(filename);
+}
+
+static int cmd_list(char *args){
+    list_files();
+    return 0;
 }
 
 
