@@ -6,6 +6,9 @@
 #include <portalfile.h>
 #include <readline/history.h>
 #include <readline/readline.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <dirent.h>
 
 int connfd = 0;
 
@@ -86,7 +89,7 @@ static int cmd_listen(char *args){
         printf("Please close the connection first\n");
         return 0;
     }
-    connfd = listen_as_server(get_config("port"));
+    listen_as_server(get_config("port"));
 }
 
 static int cmd_connect(char *args){
@@ -147,8 +150,16 @@ static int cmd_add(char *args){
         printf("Usage: add <filename>\n");
         return 0;
     }
-    char *filename = strtok(NULL, " ");
-    add_file(filename);
+    char *path;
+    while((path = strtok(NULL, " ")) != NULL){
+        struct stat s_buf;
+        stat(path, &s_buf);
+        if (S_ISDIR(s_buf.st_mode)){
+            add_dir(path);
+        } else {
+            add_file(path);
+        }
+    }
 }
 
 static int cmd_list(char *args){
