@@ -2,7 +2,11 @@
 #include <portalfile.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
 #include <fcntl.h>
+#include <assert.h>
+
+#define BUF_SIZE 8192
 
 file_node *file_head = NULL;
 file_node *file_tail = NULL;
@@ -52,38 +56,64 @@ void send_files(int connfd){
         return;
     }
     file_node *current = file_head;
-    char buf[1024];
+    char buf[BUF_SIZE];
     memset(buf, 0, sizeof(buf));
     for (int i = 0; current != NULL; i ++, current = current -> next){
-        sprintf(buf, "new %s\n", current->filename);
+        sprintf(buf, "new %s", current->filename);
         send(connfd, buf, strlen(buf), 0);
         memset(buf, 0, sizeof(buf));
-        while(read(current->fd, buf, sizeof(buf)) > 0){
-            printf("%s\n", buf);
-            send(connfd, buf, strlen(buf), 0);
+        // 发送文件名后, 等待接收方确认
+        printf("waiting for reveiver to commit.\n");
+        if (recv(connfd, buf, sizeof(buf), 0) < 0){
+            perror("send error!");
+            return;
+        } else {
             memset(buf, 0, sizeof(buf));
         }
+        size_t n;
+        while((n = read(current->fd, buf, sizeof(buf))) > 0){
+            send(connfd, buf, n, 0);
+            memset(buf, 0, n);
+            n = recv(connfd, buf, sizeof(buf), 0);
+            printf("%s\n", buf);
+            memset(buf, 0, n);
+        }
+        lseek(current->fd, 0, SEEK_SET);
     }
+    send(connfd, "fin", 4, 0);
+    recv(connfd, buf, sizeof(buf), 0);
+    assert(strcmp(buf, "fin") == 0);
     printf("All files sent\n");
 }
 
 void recv_files(int connfd){
     int fd;
-    char buf[1024];
+    size_t recv_size;
+    char buf[BUF_SIZE];
     memset(buf, 0, sizeof(buf));
-    while(recv(connfd, buf, sizeof(buf), 0) > 0){
-        printf("%s", buf);
+    while((recv_size = recv(connfd, buf, sizeof(buf), 0)) > 0){
+        // printf("%s", buf);
         if (strncmp(buf, "new", 3) == 0){
+            // close(fd);
+            if (fd != 0) close(fd);
             char *filename = strtok(buf, " ");
             filename = strtok(NULL, " ");
+            printf("receiving new file: %s\n", filename);
             if ((fd = open(filename, O_WRONLY | O_CREAT, S_IRWXU | S_IRGRP | S_IROTH)) < 0){
                 perror("failed to create file");
                 return ;
             }
             memset(buf, 0, sizeof(buf));
+            send(connfd, "ok", 3, 0);
             continue;
+        } else if (strcmp(buf, "fin") == 0){
+            printf("complete file transfer!\n");
+            send(connfd, "fin", 4, 0);
+            break;
         }
-        write(fd, buf, strlen(buf));
+        write(fd, buf, recv_size);
+        memset(buf, 0, sizeof(buf));
+        send(connfd, "ok", 3, 0);
     }
-    printf("complete file transfer!\n");
+    // printf("complete file transfer!\n");
 }

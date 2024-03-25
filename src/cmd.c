@@ -15,7 +15,6 @@ char *rl_gets(char *prompt){
         free(line_read);
         line_read = NULL; 
     }
-
     line_read = readline(prompt);
     if (line_read && *line_read){
         add_history(line_read);
