@@ -1,5 +1,13 @@
 #include <connect.h>
 
+
+/**
+ * 打开客户端文件描述符并连接到指定的主机和端口。
+ * 
+ * @param hostname 主机名
+ * @param port 端口号
+ * @return 成功连接时返回客户端文件描述符，否则返回-1
+ */
 int open_clientfd(char *hostname, char *port){
     int clientfd;
     struct addrinfo hints, *listp, *p;
@@ -25,6 +33,11 @@ int open_clientfd(char *hostname, char *port){
         return clientfd;
 }
 
+/**
+ * 打开服务器文件描述符并绑定到指定的端口。
+ * @param port 端口号
+ * @return 成功绑定时返回服务器文件描述符，否则返回-1
+*/
 int open_listenfd(char *port){
     struct addrinfo hints, *listp, *p;
     int listenfd, optval = 1;
