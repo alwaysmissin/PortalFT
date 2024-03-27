@@ -13,5 +13,6 @@ static int cmd_send(char *args);
 static int cmd_receive(char *args);
 static int cmd_close_conn(char *args);
 static int cmd_add(char *args);
+static int cmd_remove(char *args);
 static int cmd_list(char *args);
 #endif

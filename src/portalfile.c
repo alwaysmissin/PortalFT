@@ -1,11 +1,11 @@
 #include <common.h>
 #include <portalfile.h>
+#include <utils.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/sendfile.h>
 #include <fcntl.h>
-#include <assert.h>
 #include <dirent.h>
 #include <libgen.h>
 #include <config.h>
@@ -81,8 +81,32 @@ int add_file(char *filename){
         file_tail->next = new_file;
         file_tail = new_file;
     }
-    printf("File %s added, size: %ld\n", filename, size);
+    LogBlue("File \"%s\" added, size: %ld", filename, size);
     return 0;
+}
+
+/**
+ * 从发送列表中删除文件
+ * @param index 文件序号
+ * @return void
+*/
+void remove_file(int index){
+    if (file_head == NULL){
+        LogRed("No files added\n");
+        return;
+    }
+    int i = 0;
+    file_node *prev = NULL;
+    file_node *current = file_head;
+    for (; current != NULL && i <= index; i ++, current = current -> next){
+        if (i == index){
+            prev -> next = current -> next;
+            free(current);
+            return;
+        }
+        prev = current;
+    }
+    LogRed("No such file\n");
 }
 
 /**
@@ -95,8 +119,9 @@ void list_files(){
         return;
     }
     file_node *current = file_head;
+    LogBlue("No.  : %10s - %s", "Size(B)", "Filename");
     for (int i = 0; current != NULL; i ++, current = current -> next){
-        printf("No.%d: filename: %s, size: %ld\n", i, current->filename, current->size);
+        LogBlue("No.%2d: %10ldB - %s", i, current->size, current->filename);
     }
 }
 

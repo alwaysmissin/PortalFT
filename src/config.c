@@ -95,8 +95,8 @@ int config_help()
  * @param 无
  * @return 成功则返回0, 失败返回-1
 */
-int config_init(){
-	FILE *fp = fopen("config.ini", "r");
+int config_init(char* config_file){
+	FILE *fp = fopen(config_file ? config_file : "config.ini", "r");
 	if (fp == NULL){
 		printf("config.ini not found\n");
 		return -1;

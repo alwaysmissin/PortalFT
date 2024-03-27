@@ -10,12 +10,13 @@ TARGET := $(BUILDDIR)/PortalFT
 SRCS := $(wildcard $(SRCDIR)/*.c)
 # 生成对应的目标文件列表
 OBJS := $(SRCS:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
+ARGS := -l $(BUILDDIR)/PortalFT.log
 
 # 默认目标，编译可执行文件
 all: $(TARGET)
 
 run: $(TARGET)
-	$(TARGET)
+	$(TARGET) $(ARGS)
 
 # 链接目标文件生成可执行文件
 $(TARGET): $(OBJS) | $(BUILDDIR)

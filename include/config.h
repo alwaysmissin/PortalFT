@@ -9,7 +9,7 @@ enum{
 };
 int config(char *option, char *value);
 int config_help();
-int config_init();
+int config_init(char *config_file);
 char *get_config(char *option);
 
 #endif

@@ -8,8 +8,11 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <string.h>
+#include <assert.h>
 
 #include <macro.h>
 
 #define MAXLINE 128
+
+void init_log(const char *log_file);
 #endif

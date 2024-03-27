@@ -11,6 +11,7 @@ typedef struct portalfile{
 
 int add_file(char *filename);
 int add_dir(char *dir);
+void remove_file(int index);
 void list_files();
 void send_files(int connfd);
 void recv_files(int connfd);

@@ -1,5 +1,7 @@
 #include <cmd.h>
 #include <common.h>
+#include <string.h>
+#include <utils.h>
 #include <config.h>
 #include <server.h>
 #include <client.h>
@@ -62,6 +64,7 @@ static struct {
     {"send"    , "send message or file"                                               , cmd_send},
     {"receive" , "receive message or file"                                            , cmd_receive},
     {"add"     , "add file to the sending list"                                       , cmd_add},
+    {"remove"  , "revome file from the sending list"                                  , cmd_remove},
     {"list"    , "list all files in the sending list"                                 , cmd_list},
     {"close"   , "close the connection"                                               , cmd_close_conn},
 };
@@ -118,7 +121,7 @@ static int cmd_config(char *args){
         return 0;
     }
     if (option == NULL || value == NULL){
-        printf("Usage: config <option> <value>\n");
+        printf(ANSI_FG_BLUE "Usage: config <option> <value>\n" ANSI_NONE);
         return 0;
     }
     config(option, value);
@@ -130,7 +133,7 @@ static int cmd_config(char *args){
  */
 static int cmd_listen(char *args){
     if (connfd){
-        printf("Please close the connection first\n");
+        printf(ANSI_FG_RED "Please close the connection first\n" ANSI_NONE);
         return 0;
     }
     // 监听端口, 并设置连接的文件描述符
@@ -143,17 +146,17 @@ static int cmd_listen(char *args){
  */
 static int cmd_connect(char *args){
     if (args == NULL){
-        printf("Usage: connect <ip>\n");
+        printf(ANSI_FG_BLUE "Usage: connect <ip>\n" ANSI_NONE);
         return 0;
     }
     if (connfd){
-        printf("Please close the connection first\n");
+        printf(ANSI_FG_RED "Please close the connection first\n" ANSI_NONE);
         return 0;
     }
     char *host = strtok(NULL, " ");
 
     connfd = connect_as_client(host, get_config("port"));
-    printf("Connected to %s:%s on fd %d\n", host, get_config("port"), connfd);
+    printf(ANSI_FG_GREEN "Connected to %s:%s on fd %d\n" ANSI_NONE, host, get_config("port"), connfd);
 }
 
 /**
@@ -178,10 +181,7 @@ static int cmd_send(char *args){
         printf("Please connect to the server first\n");
         return 0;
     }
-    // if (args != NULL){
-    //     // write(connfd, args, strlen(args));
-    //     send(connfd, args, strlen(args), 0);
-    // }
+
     send_files(connfd);
 }
 
@@ -192,16 +192,10 @@ static int cmd_send(char *args){
  */
 static int cmd_receive(char *args){
     if (connfd == 0){
-        printf("Please connect to the server first\n");
+        printf(ANSI_FG_RED "Please connect to the server first\n" ANSI_NONE);
         return 0;
     }
-    // char buf[1024];
-    // // int n = read(connfd, buf, sizeof(buf));
-    // int n = recv(connfd, buf, sizeof(buf), 0);
-    // if (n > 0){
-    //     buf[n] = '\0';
-    //     printf("%s\n", buf);
-    // }
+
     recv_files(connfd);
     return 0;
 }
@@ -214,7 +208,7 @@ static int cmd_receive(char *args){
  */
 static int cmd_add(char *args){
     if (args == NULL){
-        printf("Usage: add <filename>\n");
+        printf(ANSI_FG_BLUE "Usage: add <filename>\n" ANSI_NONE);
         return 0;
     }
     char *path;
@@ -230,6 +224,20 @@ static int cmd_add(char *args){
     }
 }
 
+static int cmd_remove(char *args){
+    if (args == NULL){
+        printf(ANSI_FG_BLUE "Usage: remove <filename>\n" ANSI_NONE);
+        return 0;
+    }
+    char *NO_s = strtok(NULL, " ");
+    int NO = atoi(NO_s);
+    if (NO == 0){
+        printf(ANSI_FG_RED "Please input the correct number\n" ANSI_NONE);
+        return 0;
+    }
+    remove_file(NO);
+}
+
 /**
  * 列出发送列表中的所有文件
  */
@@ -239,11 +247,53 @@ static int cmd_list(char *args){
 }
 
 /**
+ * 用于自动补全用户输入的指令
+ * @param text 用户输入的字符串
+ * @param state 状态
+ * @return 自动补全的字符串
+*/
+char *command_generator(const char *text, int state){
+    // char *name = NULL;
+    if (!state){
+        for (int i = 0; i < NR_CMD; i ++){
+            if (!strncmp(cmd_table[i].name, text, strlen(text))){
+                return strdup(cmd_table[i].name);
+            }
+        }
+        // extern file_node *file_head;
+        // file_node *current = file_head;
+        // for (; current != NULL;current = current -> next){
+        //     if (!strncmp(current -> filename, text, strlen(text))){
+        //         return strdup(current -> filename);
+        //     }
+        // }
+    }
+    return NULL;
+}
+
+/**
+ * 用于自动补全用户输入的指令
+ * @param text 用户输入的字符串
+ * @param start 开始位置
+ * @param end 结束位置
+ * @return 自动补全的字符串列表
+*/
+char **command_complete(const char *text, int start, int end){
+    char **matches = NULL;
+    if (!start){
+        matches = rl_completion_matches(text, command_generator);
+    }
+    return matches;
+}
+
+/**
  * 主循环, 不断获取用户输入, 并调用对应的处理函数
  * 若输入未知指令, 则显示帮助信息
  */
 void portal_cli(){
     char *prompt = "(PortalFT) ";
+    // 设置自动补全函数
+    rl_attempted_completion_function = command_complete;
     for (char *str; (str = rl_gets(prompt)) != NULL; ){
         char *str_end = str + strlen(str);
 
@@ -267,7 +317,7 @@ void portal_cli(){
         }
 
         if (i == NR_CMD){
-            printf("Unknown command '%s'\n", cmd);
+            printf(ANSI_FG_RED "Unknown command '%s'\n" ANSI_NONE, cmd);
             cmd_help(NULL);
         }
     }

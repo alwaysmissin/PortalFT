@@ -3,6 +3,7 @@
 #include <connect.h>
 #include <pthread.h>
 #include <cmd.h>
+#include <utils.h>
 
 // int listen_as_server(char *port){
 //     int listenfd, connfd;
@@ -70,7 +71,7 @@ void *handle_connection(void *arg){
 
             if (new_connfd >= 0){
                 getnameinfo((struct sockaddr *)&clientaddr, clientlen, client_hostname, MAXLINE, client_port, MAXLINE, 0);
-                printf("Connected to (%s, %s)\n", client_hostname, client_port);
+                LogGreen("Connected to (%s, %s)\n", client_hostname, client_port);
 
                 pthread_mutex_lock(&lock);
                 connfd = new_connfd;
@@ -97,7 +98,6 @@ void listen_as_server(char *port){
         while(connfd == 0){
             pthread_cond_wait(&cond, &lock);
         }
-        printf("hello\n");
         int new_connfd = connfd;
         pthread_mutex_unlock(&lock);
         break;
