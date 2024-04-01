@@ -10,11 +10,15 @@
 #include <libgen.h>
 #include <config.h>
 #include <sys/time.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 
 #define BUF_SIZE 8192
 
 file_node *file_head = NULL;
 file_node *file_tail = NULL;
+
+extern SSL *ssl;
 
 /**
  * 将目录dir下的所有文件添加到发送列表中
@@ -46,6 +50,8 @@ int add_dir(char *dir){
             add_file(file_path);
         }
     } 
+    free(filename);
+    free(dp);
     return 0;
 }
 
@@ -71,10 +77,29 @@ int add_file(char *filename){
     lseek(fd, 0, SEEK_SET);
 
     // 将文件信息添加到发送列表中
+    size_t threads = atoi(get_config("threads"));
     new_file->fd = fd;
+    new_file->fds = (int *)malloc(sizeof(int) * threads);
+    for (int i = 0; i < threads; i ++){
+        new_file->fds[i] = open(filename, O_RDONLY);
+        // printf("fd: %d\n", new_file->fds[i]);
+    }
+    // close(fd);
     strcpy(new_file->filename, filename);
     new_file->size = size;
+    // 对文件进行分片, 每个线程发送一个分片
+    new_file->slices = (size_t *)malloc(sizeof(size_t) * (threads + 1));
+    size_t slice_size = size / threads;
+    // 为每个线程平均分配文件分片
+    // 第一个线程发送的内容为[0, slices[1]]
+    // 其余线程发送的内容为[slices[i] + 1, slices[i + 1]]
+    for (int i = 0; i < threads; i ++){
+        new_file->slices[i] = i * slice_size;
+    }
+    // 最后一个线程的分片大小为剩余的文件大小
+    new_file->slices[threads] = size;
     new_file->next = NULL;
+    // 将文件信息添加到发送列表中
     if (file_head == NULL){
         file_head = new_file;
         file_tail = new_file;
@@ -124,6 +149,34 @@ void list_files(){
     for (int i = 0; current != NULL; i ++, current = current -> next){
         LogBlue("No.%2d: %10ldB - %s", i, current->size, current->filename);
     }
+    // 打印分片信息
+    // for (current = file_head; current != NULL; current = current -> next){
+    //     LogBlue("File: %s", current->filename);
+    //     for (int i = 0; i < atoi(get_config("threads")); i ++){
+    //         LogBlue("Slice %d: %ld - %ld", i, current->slices[i], current->slices[i + 1]);
+    //     }
+    // }
+}
+
+/**
+ * 释放发送列表中的所有文件
+*/
+void release_files(){
+    file_node *current = file_head;
+    file_node *next;
+    size_t threads = atoi(get_config("threads"));
+    while(current != NULL){
+        next = current -> next;
+        free(current->slices);
+        for (int i = 0; i < threads; i ++){
+            close(current->fds[i]);
+        }
+        free(current->fds);
+        free(current);
+        current = next;
+    }
+    file_head = NULL;
+    file_tail = NULL;
 }
 
 /**
@@ -140,37 +193,57 @@ void send_files(int connfd){
     memset(buf, 0, sizeof(buf));
     for (int i = 0; current != NULL; i ++, current = current -> next){
         sprintf(buf, "new %s", current->filename);
-        send(connfd, buf, strlen(buf), 0);
+        // send(connfd, buf, strlen(buf), 0);
+        SSL_write(ssl, buf, strlen(buf));
         memset(buf, 0, sizeof(buf));
         // 发送文件名后, 等待接收方确认
-        printf("waiting for reveiver to commit.\n");
-        if (recv(connfd, buf, sizeof(buf), 0) < 0){
+        LogBlue("Sending file: %s", current->filename);
+        // if (recv(connfd, buf, sizeof(buf), 0) < 0){
+        if (SSL_read(ssl, buf, sizeof(buf)) < 0){
             perror("send error!");
             return;
         } else {
+            printf("received: %s\n", buf);
             memset(buf, 0, sizeof(buf));
         }
+        
         size_t n;
         // 如果文件大小小于0x7fff0000, 则使用sendfile发送文件
         // 否则使用read-send的方式发送文件
-        if (current -> size < 0x7fff0000){
-            sendfile(connfd, current->fd, NULL, current->size);
-        } else {
-            printf("The file to send is bigger than limitation, using read-send to send file instead of sendfile\n");
-            while((n = read(current->fd, buf, sizeof(buf))) > 0){
-                send(connfd, buf, n, 0);
-                memset(buf, 0, n);
+        int ret, err;
+        // if (current -> size < 0x7fff0000){
+        //     // sendfile(connfd, current->fd, NULL, current->size);
+
+        //     if((ret = SSL_sendfile(ssl, current->fd, 0, current->size, 0)) < 0){
+        //         err = SSL_get_error(ssl, ret);
+        //         printf("SSL_write error: %d\n", err);
+        //     }
+        //     printf("file sended\n");
+        // } else {
+            // printf("The file to send is bigger than limitation, using read-send to send file instead of sendfile\n");
+        while((n = read(current->fd, buf, sizeof(buf))) > 0){
+            // send(connfd, buf, n, 0);
+            // SSL_write(ssl, buf, n);
+            if((ret = SSL_write(ssl, buf, n)) < 0){
+                err = SSL_get_error(ssl, ret);
+                printf("SSL_write error: %d\n", err);
             }
+            memset(buf, 0, n);
         }
+        // }
         // 当一个文件发送完毕后, 向接收方发送当前文件传输结束信号
-        send(connfd, "fin", 4, 0);
-        recv(connfd, buf, sizeof(buf), 0);
+        // send(connfd, "fin", 4, 0);
+        SSL_write(ssl, "fin", 4);
+        // recv(connfd, buf, sizeof(buf), 0);
+        SSL_read(ssl, buf, sizeof(buf));
+        // printf("fin: %s\n", buf);
         assert(strcmp(buf, "fin") == 0);
         lseek(current->fd, 0, SEEK_SET);
     }
 
     // 完成所有文件的发送后, 向接收方发送结束信号
-    send(connfd, "finall", 7, 0);
+    // send(connfd, "finall", 7, 0);
+    SSL_write(ssl, "finall", 7);
 
     printf("All files sent\n");
 }
@@ -189,8 +262,9 @@ void recv_files(int connfd){
     struct timeval tv;    
     time_t secs = 0;
     size_t bytes_received = 0;
-    while((recv_size = recv(connfd, buf, sizeof(buf), 0)) > 0){
-        // printf("%s", buf);
+    // while((recv_size = recv(connfd, buf, sizeof(buf), 0)) > 0){
+    while((recv_size = SSL_read(ssl, buf, sizeof(buf))) > 0){
+        // printf("recv_size: %ld buf: %s\n", recv_size, buf);
         if (strncmp(buf, "new", 3) == 0){
             if (fd != 0) close(fd);
             // 从 buf 中分割出文件名
@@ -207,12 +281,14 @@ void recv_files(int connfd){
             }
             // 向发送方发送确认信息, 通知发送方可以开始发送文件内容
             memset(buf, 0, sizeof(buf));
-            send(connfd, "ok", 3, 0);
+            // send(connfd, "ok", 3, 0);
+            SSL_write(ssl, "ok", 3);
             continue;
         } else if (strcmp(buf + recv_size - 4, "fin") == 0){
             // 接收到发送方的结束信号, 关闭文件描述符
             // 准备接收下一个文件
-            send(connfd, "fin", 4, 0);
+            // send(connfd, "fin", 4, 0);
+            SSL_write(ssl, "fin", 4);
             write(fd, buf, recv_size - 4);
             memset(buf, 0, recv_size);
             printf("\nsaved to %s\n", filepath);

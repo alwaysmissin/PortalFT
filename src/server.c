@@ -5,6 +5,9 @@
 #include <cmd.h>
 #include <utils.h>
 
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+
 // int listen_as_server(char *port){
 //     int listenfd, connfd;
 //     socklen_t clientlen;
@@ -47,6 +50,9 @@
 
 extern int connfd;
 extern int listenfd;
+extern SSL_CTX *ctx;
+extern SSL *ssl;
+
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
@@ -75,17 +81,35 @@ void *handle_connection(void *arg){
 
                 // pthread_mutex_lock(&lock);
                 connfd = new_connfd;
+                ssl = SSL_new(ctx);
+                SSL_set_fd(ssl, connfd);
+                if(SSL_accept(ssl) == -1){
+                    perror("accept");
+                    close(connfd);
+                    // break;
+                }
                 // pthread_cond_signal(&cond);
                 // pthread_mutex_unlock(&lock);
                 break;
             }
         }
     }
+                // printf("hello\n");
+    pthread_exit(NULL);
     // write(STDOUT_FILENO, "\n", 1);
 }
 
 void listen_as_server(char *port){
     printf("listenint on port: %s\n", port);
+    ctx = SSL_CTX_new(SSLv23_server_method());
+    if (ctx == NULL){
+        LogRed("Create CTX error!!!");
+    }
+
+    SSL_CTX_use_certificate_file(ctx, "./cacert.pem", SSL_FILETYPE_PEM);
+    SSL_CTX_use_PrivateKey_file(ctx, "./privkey.pem", SSL_FILETYPE_PEM);
+    SSL_CTX_check_private_key(ctx);
+
     listenfd = open_listenfd(port);
     int flags = fcntl(listenfd, F_GETFL, 0);
     fcntl(listenfd, F_SETFL, flags | O_NONBLOCK);

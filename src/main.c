@@ -2,12 +2,17 @@
 #include <cmd.h>
 #include <config.h>
 #include <getopt.h>
+#include <utils.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 // #include <server.h>
 // #include <client.h>
 // #include <readline/readline.h>
 // #include <readline/history.h>
 static char* config_file = NULL;
 static char* log_file = NULL;
+
+SSL_CTX *ctx;
 
 static int parse_args(int argc, char *argv[]){
     const struct option table[] = {
@@ -31,6 +36,12 @@ static int parse_args(int argc, char *argv[]){
     return 0;
 }
 
+void ssl_init(){
+    SSL_library_init();
+    OpenSSL_add_all_algorithms();
+    SSL_load_error_strings();
+}
+
 // 主函数, 完成基本的初始化工作, 并启动Portal终端
 int main(int argc, char **argv){
     // while(1){
@@ -39,6 +50,7 @@ int main(int argc, char **argv){
     // }
     parse_args(argc, argv);
     config_init(config_file);
+    ssl_init();
     init_log(log_file);
     portal_cli();
 

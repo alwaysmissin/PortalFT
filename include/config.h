@@ -4,6 +4,7 @@
 enum{
     PORT,
     SAVEPATH,
+    THREADS,
     NR_CONFIG
 
 };

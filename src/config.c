@@ -17,6 +17,7 @@ static struct{
 } config_table[] = {
 	{"port", "config the port to listen", PORT},
 	{"savepath", "config the path to save the file", SAVEPATH},
+	{"threads", "config the number of threads", THREADS},
 };
 
 /*
@@ -24,7 +25,8 @@ static struct{
 */
 static char config_list[NR_CONFIG][128] = {
 	"5339",
-	"."
+	".",
+	"4"
 };
 
 /**

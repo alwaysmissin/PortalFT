@@ -1,6 +1,6 @@
 CC := gcc
 CFLAGS := -Iinclude
-LDFLAGS := -lreadline
+LDFLAGS := -lreadline -lssl -lcrypto -lpthread
 SRCDIR := src
 BUILDDIR := build
 OBJDIR := $(BUILDDIR)/objs
@@ -20,11 +20,11 @@ run: $(TARGET)
 
 # 链接目标文件生成可执行文件
 $(TARGET): $(OBJS) | $(BUILDDIR)
-	$(CC) $^ $(LDFLAGS) -o $@ -fsanitize=address
+	$(CC) $^ $(LDFLAGS) -o $@ -fsanitize=address -g
 
 # 编译每个源文件生成对应的目标文件
 $(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
-	$(CC) $(CFLAGS) -c $< -o $@ -fsanitize=address
+	$(CC) $(CFLAGS) -c $< -o $@ -fsanitize=address -g
 
 # 创建 build 目录
 $(BUILDDIR):

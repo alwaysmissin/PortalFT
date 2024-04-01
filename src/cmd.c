@@ -12,8 +12,14 @@
 #include <sys/types.h>
 #include <dirent.h>
 
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+
 int connfd = 0;
 int listenfd = 0;
+
+extern SSL_CTX *ctx;
+SSL *ssl = NULL;
 
 /**
  * 获取用户的输入, 并返回用户输入的字符串
@@ -104,7 +110,9 @@ static int cmd_help(char *args) {
  */
 static int cmd_quit(char *args){
     close(connfd);
-    exit(0);
+    SSL_CTX_free(ctx);
+    release_files();
+    return -1;
 }
 
 /**
@@ -226,6 +234,7 @@ static int cmd_add(char *args){
             add_file(path);
         }
     }
+    return 0;
 }
 
 static int cmd_remove(char *args){
