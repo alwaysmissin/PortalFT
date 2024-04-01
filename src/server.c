@@ -46,11 +46,12 @@
 // }
 
 extern int connfd;
+extern int listenfd;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 void *handle_connection(void *arg){
-    int listenfd = *(int *)arg;
+    // int *listenfd = (int *)arg;
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
     char client_hostname[MAXLINE], client_port[MAXLINE];
@@ -59,7 +60,6 @@ void *handle_connection(void *arg){
         fd_set readfds;
         FD_ZERO(&readfds);
         FD_SET(listenfd, &readfds);
-
         if (select(listenfd + 1, &readfds, NULL, NULL, NULL) < 0){
             perror("select error");
             continue;
@@ -73,34 +73,25 @@ void *handle_connection(void *arg){
                 getnameinfo((struct sockaddr *)&clientaddr, clientlen, client_hostname, MAXLINE, client_port, MAXLINE, 0);
                 LogGreen("Connected to (%s, %s)\n", client_hostname, client_port);
 
-                pthread_mutex_lock(&lock);
+                // pthread_mutex_lock(&lock);
                 connfd = new_connfd;
-                pthread_cond_signal(&cond);
-                pthread_mutex_unlock(&lock);
-                printf("connfd: %d\n", connfd);
+                // pthread_cond_signal(&cond);
+                // pthread_mutex_unlock(&lock);
                 break;
             }
         }
     }
+    // write(STDOUT_FILENO, "\n", 1);
 }
 
 void listen_as_server(char *port){
     printf("listenint on port: %s\n", port);
-    int listenfd = open_listenfd(port);
+    listenfd = open_listenfd(port);
     int flags = fcntl(listenfd, F_GETFL, 0);
     fcntl(listenfd, F_SETFL, flags | O_NONBLOCK);
 
     pthread_t thread_id;
-    pthread_create(&thread_id, NULL, handle_connection, &listenfd);
-    // printf("hello\n");
-    while(1){
-        pthread_mutex_lock(&lock);
-        while(connfd == 0){
-            pthread_cond_wait(&cond, &lock);
-        }
-        int new_connfd = connfd;
-        pthread_mutex_unlock(&lock);
-        break;
-    }
+    pthread_create(&thread_id, NULL, handle_connection, NULL);
+
     return ;
 }

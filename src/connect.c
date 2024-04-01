@@ -14,6 +14,7 @@ int open_clientfd(char *hostname, char *port){
 
     memset(&hints, 0, sizeof(struct addrinfo));
     hints.ai_socktype = SOCK_STREAM;
+    // hints.ai_socktype = SOCK_DGRAM;
     hints.ai_flags = AI_NUMERICSERV;
     hints.ai_flags |= AI_ADDRCONFIG;
     getaddrinfo(hostname, port, &hints, &listp);
@@ -44,6 +45,7 @@ int open_listenfd(char *port){
 
     memset(&hints, 0, sizeof(struct addrinfo));
     hints.ai_socktype = SOCK_STREAM;
+    // hints.ai_socktype = SOCK_DGRAM;
     hints.ai_flags = AI_PASSIVE | AI_ADDRCONFIG;
     hints.ai_flags |= AI_NUMERICSERV;
     getaddrinfo(NULL, port, &hints, &listp);

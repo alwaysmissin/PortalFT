@@ -9,6 +9,7 @@
 #include <dirent.h>
 #include <libgen.h>
 #include <config.h>
+#include <sys/time.h>
 
 #define BUF_SIZE 8192
 
@@ -185,6 +186,9 @@ void recv_files(int connfd){
     char buf[BUF_SIZE];
     char filepath[128];
     memset(buf, 0, sizeof(buf));
+    struct timeval tv;    
+    time_t secs = 0;
+    size_t bytes_received = 0;
     while((recv_size = recv(connfd, buf, sizeof(buf), 0)) > 0){
         // printf("%s", buf);
         if (strncmp(buf, "new", 3) == 0){
@@ -211,7 +215,7 @@ void recv_files(int connfd){
             send(connfd, "fin", 4, 0);
             write(fd, buf, recv_size - 4);
             memset(buf, 0, recv_size);
-            printf("saved to %s\n", filepath);
+            printf("\nsaved to %s\n", filepath);
             continue;
         } else if (strcmp(buf + recv_size - 7, "finall") == 0){
             write(fd, buf, recv_size - 7);
@@ -219,6 +223,15 @@ void recv_files(int connfd){
             break;
         }
         write(fd, buf, recv_size);
+        if (gettimeofday(&tv, NULL) == 0){
+            bytes_received += recv_size;
+            if (tv.tv_sec != secs){
+                secs = tv.tv_sec;
+                printf("\rreceiving speed: %ld MB/s                ", bytes_received >> 20);
+                fflush(stdout);
+                bytes_received = 0;
+            }
+        }
         memset(buf, 0, sizeof(buf));
     }
     if (fd != 0) close(fd);

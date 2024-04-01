@@ -13,6 +13,7 @@
 #include <dirent.h>
 
 int connfd = 0;
+int listenfd = 0;
 
 /**
  * 获取用户的输入, 并返回用户输入的字符串
@@ -115,12 +116,15 @@ static int cmd_quit(char *args){
  */
 static int cmd_config(char *args){
     char *option = strtok(NULL, " ");
-    char *value = strtok(NULL, " ");
-    if (strcmp(option, "help") == 0){
+    if (option == NULL){
+        config_help();
+        return 0;
+    } else if (strcmp(option, "help") == 0){
         config_help();
         return 0;
     }
-    if (option == NULL || value == NULL){
+    char *value = strtok(NULL, " ");
+    if (value == NULL){
         printf(ANSI_FG_BLUE "Usage: config <option> <value>\n" ANSI_NONE);
         return 0;
     }

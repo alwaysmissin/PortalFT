@@ -24,7 +24,7 @@ static struct{
 */
 static char config_list[NR_CONFIG][128] = {
 	"5339",
-	""
+	"."
 };
 
 /**
