@@ -30,9 +30,11 @@ int connect_as_client(char *host, char *port){
     }
     SSL_set_fd(ssl, clientfd);
     assert(ssl);
+    printf("hello1\n");
     if (SSL_connect(ssl) != 1){
         ERR_print_errors_fp(stderr);
         return -1;
     }
+    printf("hello2\n");
     return clientfd;
 }

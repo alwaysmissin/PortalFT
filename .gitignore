@@ -1,6 +1,7 @@
 .vscode/
 .metals/
-build/
+build/objs/
+build/PortalFT.log
 sender/
 *.mkv
 *.pem
