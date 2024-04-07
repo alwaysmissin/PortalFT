@@ -61,17 +61,18 @@ void *handle_connection(void *arg){
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
     char client_hostname[MAXLINE], client_port[MAXLINE];
+    fd_set readfds, readyfds;
+    FD_ZERO(&readfds);
+    FD_SET(listenfd, &readfds);
 
     while(1){
-        fd_set readfds;
-        FD_ZERO(&readfds);
-        FD_SET(listenfd, &readfds);
-        if (select(listenfd + 1, &readfds, NULL, NULL, NULL) < 0){
+        readyfds = readfds;
+        if (select(listenfd + 1, &readyfds, NULL, NULL, NULL) < 0){
             perror("select error");
             continue;
         }
 
-        if (FD_ISSET(listenfd, &readfds)){
+        if (FD_ISSET(listenfd, &readyfds)){
             clientlen = sizeof(struct sockaddr_storage);
             int new_connfd = accept(listenfd, (struct sockaddr *)&clientaddr, &clientlen);
 

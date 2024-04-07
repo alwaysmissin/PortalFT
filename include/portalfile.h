@@ -1,15 +1,16 @@
 #ifndef __PORTALFILE_H__
 #define __PORTALFILE_H__
 #include <common.h>
+#include <stdlib.h>
 
 typedef struct portalfile{
-    int fd;
+    FILE *fp;
     char filename[128];
     size_t size;
     char md5[32];
     struct portalfile *next;
     size_t *slices;
-    int *fds;
+    FILE **fps;
 }file_node;
 
 int add_file(char *filename);
