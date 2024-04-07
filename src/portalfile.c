@@ -203,7 +203,17 @@ void send_files(int connfd){
             perror("send error!");
             return;
         } else {
-            printf("received: %s\n", buf);
+            char *ok = strtok(buf, " ");
+            size_t end_off = atoi(buf + strlen(ok) + 1);
+            assert(strcmp(ok, "ok") == 0);
+            // lseek(current->fd, end_off, SEEK_SET);
+            if (end_off == current->size){
+                LogBlue("File already exists on the receiver side, skip sending");
+                continue;
+            } else {
+                LogBlue("Start to send file: %s from the offset: %ld", current->filename, end_off);
+                lseek(current->fd, end_off, SEEK_SET);
+            }
             memset(buf, 0, sizeof(buf));
         }
         
@@ -280,9 +290,13 @@ void recv_files(int connfd){
                 return ;
             }
             // 向发送方发送确认信息, 通知发送方可以开始发送文件内容
+            // 且发送文件的末尾位置
+            size_t end_off = lseek(fd, 0, SEEK_END);
             memset(buf, 0, sizeof(buf));
+            int len = sprintf(buf, "ok %ld\n", end_off);
+            assert(len != -1);
             // send(connfd, "ok", 3, 0);
-            SSL_write(ssl, "ok", 3);
+            SSL_write(ssl, buf, len);
             continue;
         } else if (strcmp(buf + recv_size - 4, "fin") == 0){
             // 接收到发送方的结束信号, 关闭文件描述符

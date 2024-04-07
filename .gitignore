@@ -4,4 +4,6 @@ build/objs/
 build/PortalFT.log
 sender/
 *.mkv
+*.pdf
+*.mp4
 *.pem
