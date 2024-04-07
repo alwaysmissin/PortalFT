@@ -1,5 +1,6 @@
 #include <common.h>
 #include <portalfile.h>
+#include <md5.h>
 #include <utils.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -75,6 +76,8 @@ int add_file(char *filename){
         return -1;
     }
     lseek(fd, 0, SEEK_SET);
+    // 获取文件的md5校验值
+    
 
     // 将文件信息添加到发送列表中
     size_t threads = atoi(get_config("threads"));

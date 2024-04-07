@@ -6,6 +6,7 @@ typedef struct portalfile{
     int fd;
     char filename[128];
     size_t size;
+    char md5[32];
     struct portalfile *next;
     size_t *slices;
     int *fds;
