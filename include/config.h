@@ -5,6 +5,8 @@ enum{
     PORT,
     SAVEPATH,
     THREADS,
+    SSL_ENABLE,
+    MD5_ENABLE,
     NR_CONFIG
 
 };

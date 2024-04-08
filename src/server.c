@@ -56,8 +56,7 @@ extern SSL *ssl;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
-void *handle_connection(void *arg){
-    // int *listenfd = (int *)arg;
+void *handle_connection_ssl(void *arg){
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
     char client_hostname[MAXLINE], client_port[MAXLINE];
@@ -80,7 +79,6 @@ void *handle_connection(void *arg){
                 getnameinfo((struct sockaddr *)&clientaddr, clientlen, client_hostname, MAXLINE, client_port, MAXLINE, 0);
                 LogGreen("Connected to (%s, %s)\n", client_hostname, client_port);
 
-                // pthread_mutex_lock(&lock);
                 connfd = new_connfd;
                 ssl = SSL_new(ctx);
                 SSL_set_fd(ssl, connfd);
@@ -89,18 +87,14 @@ void *handle_connection(void *arg){
                     close(connfd);
                     // break;
                 }
-                // pthread_cond_signal(&cond);
-                // pthread_mutex_unlock(&lock);
                 break;
             }
         }
     }
-                // printf("hello\n");
     pthread_exit(NULL);
-    // write(STDOUT_FILENO, "\n", 1);
 }
 
-void listen_as_server(char *port){
+void listen_as_server_ssl(char *port){
     printf("listenint on port: %s\n", port);
     ctx = SSL_CTX_new(SSLv23_server_method());
     if (ctx == NULL){
@@ -111,6 +105,48 @@ void listen_as_server(char *port){
     SSL_CTX_use_PrivateKey_file(ctx, "./privkey.pem", SSL_FILETYPE_PEM);
     SSL_CTX_check_private_key(ctx);
 
+    listenfd = open_listenfd(port);
+    int flags = fcntl(listenfd, F_GETFL, 0);
+    fcntl(listenfd, F_SETFL, flags | O_NONBLOCK);
+
+    pthread_t thread_id;
+    pthread_create(&thread_id, NULL, handle_connection_ssl, NULL);
+
+    return ;
+}
+
+void *handle_connection(void *arg){
+    // int *listenfd = (int *)arg;
+    socklen_t clientlen;
+    struct sockaddr_storage clientaddr;
+    char client_hostname[MAXLINE], client_port[MAXLINE];
+
+    while(1){
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(listenfd, &readfds);
+        if (select(listenfd + 1, &readfds, NULL, NULL, NULL) < 0){
+            perror("select error");
+            continue;
+        }
+
+        if (FD_ISSET(listenfd, &readfds)){
+            clientlen = sizeof(struct sockaddr_storage);
+            int new_connfd = accept(listenfd, (struct sockaddr *)&clientaddr, &clientlen);
+
+            if (new_connfd >= 0){
+                getnameinfo((struct sockaddr *)&clientaddr, clientlen, client_hostname, MAXLINE, client_port, MAXLINE, 0);
+                LogGreen("Connected to (%s, %s)\n", client_hostname, client_port);
+
+                connfd = new_connfd;
+                break;
+            }
+        }
+    }
+}
+
+void listen_as_server(char *port){
+    printf("listenint on port: %s\n", port);
     listenfd = open_listenfd(port);
     int flags = fcntl(listenfd, F_GETFL, 0);
     fcntl(listenfd, F_SETFL, flags | O_NONBLOCK);

@@ -18,15 +18,19 @@ static struct{
 	{"port", "config the port to listen", PORT},
 	{"savepath", "config the path to save the file", SAVEPATH},
 	{"threads", "config the number of threads", THREADS},
+	{"ssl", "config the ssl mode (1: open ssl, 0: close ssl)", SSL_ENABLE},
+	{"md5", "config the md5 mode (1: open md5, 0: close md5)", MD5_ENABLE}
 };
 
 /*
 配置项的值列表
 */
-static char config_list[NR_CONFIG][128] = {
+static char config_list[NR_CONFIG][64] = {
 	"5339",
 	".",
-	"4"
+	"4",
+	"1",
+	"1"
 };
 
 /**

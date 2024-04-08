@@ -148,8 +148,13 @@ static int cmd_listen(char *args){
         printf(ANSI_FG_RED "Please close the connection first\n" ANSI_NONE);
         return 0;
     }
+    int ssl_enable = atoi(get_config("ssl"));
+    if (ssl_enable){
+        listen_as_server_ssl(get_config("port"));
+    } else {
+        listen_as_server(get_config("port"));
+    }
     // 监听端口, 并设置连接的文件描述符
-    listen_as_server(get_config("port"));
 }
 
 /**
@@ -166,8 +171,12 @@ static int cmd_connect(char *args){
         return 0;
     }
     char *host = strtok(NULL, " ");
-
-    connfd = connect_as_client(host, get_config("port"));
+    int ssl_enable = atoi(get_config("ssl"));
+    if (ssl_enable){
+        connfd = connect_as_client_ssl(host, get_config("port"));
+    } else {
+        connfd = connect_as_client(host, get_config("port"));
+    }
     printf(ANSI_FG_GREEN "Connected to %s:%s on fd %d\n" ANSI_NONE, host, get_config("port"), connfd);
 }
 
@@ -193,8 +202,12 @@ static int cmd_send(char *args){
         printf("Please connect to the server first\n");
         return 0;
     }
-
-    send_files(connfd);
+    int ssl_enable = atoi(get_config("ssl"));
+    if (ssl_enable){
+        send_files_ssl(connfd);
+    } else {
+        send_files(connfd);
+    }
 }
 
 /**
@@ -207,8 +220,12 @@ static int cmd_receive(char *args){
         printf(ANSI_FG_RED "Please connect to the server first\n" ANSI_NONE);
         return 0;
     }
-
-    recv_files(connfd);
+    int ssl_enable = atoi(get_config("ssl"));
+    if (ssl_enable){
+        recv_files_ssl(connfd);
+    } else {
+        recv_files(connfd);
+    }
     return 0;
 }
 
