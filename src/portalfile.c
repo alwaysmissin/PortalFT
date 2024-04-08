@@ -575,6 +575,5 @@ void recv_files_ssl(int connfd){
         printf("\n");
         memset(buf, 0, sizeof(buf));
     }
-    // if (fd != 0) close(fd);
     if (fp != NULL) fclose(fp);
 }
