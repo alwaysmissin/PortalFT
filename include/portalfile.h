@@ -13,6 +13,17 @@ typedef struct portalfile{
     // FILE **fps;
 }file_node;
 
+typedef struct{
+    char magic[4];
+    char type;
+    char filename[128];
+    off_t offset;
+    size_t size;
+    char md5[33];
+} CTRLINFO;
+
+enum {NEW, OK_TO_RECEIVE, FIN, FINALL, RESUME};
+
 int add_file(char *filename);
 int add_dir(char *dir);
 void remove_file(int index);
