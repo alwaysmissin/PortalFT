@@ -19,7 +19,6 @@
 file_node *file_head = NULL;
 file_node *file_tail = NULL;
 
-extern SSL *ssl;
 
 /**
  * 将目录dir下的所有文件添加到发送列表中
@@ -84,7 +83,7 @@ int add_file(char *filename){
     // 获取文件的md5校验值
     int md5_enable = atoi(get_config("md5"));
     if (md5_enable){
-        LogBlue("md5 calculatiing!\n");
+        LogBlue("md5 calculating!");
         calc_md5(fp, new_file->md5);
     } else {
         // 向md5字段填充0
@@ -257,7 +256,7 @@ void send_files(int connfd){
             .offset = 0, .size = current->size};
         strcpy(ctrlinfo.filename, current->filename);
         strcpy(ctrlinfo.md5, current->md5);
-        memcpy(buf, &ctrlinfo, sizeof(ctrlinfo));
+        memcpy(buf, &ctrlinfo, sizeof(CTRLINFO));
         // 发送控制信息, 该控制信息是一个新文件, 发送的内容包括了文件名, 大小和md5校验值
         write(connfd, buf, sizeof(CTRLINFO));
         memset(buf, 0, sizeof(buf));
@@ -290,8 +289,8 @@ void send_files(int connfd){
         size_t n;
         // 否则使用read-send的方式发送文件
         int ret, err;
-        while(!feof(current->fp)){
-            n = fread(buf, sizeof(char), nbytes_left > BUF_SIZE ? nbytes_left : BUF_SIZE, current->fp);
+        while(!feof(current->fp) && nbytes_left > 0){
+            n = fread(buf, sizeof(char), nbytes_left < BUF_SIZE ? nbytes_left : BUF_SIZE, current->fp);
             nbytes_left -= n;
             if((ret = write(connfd, buf, n)) < 0){
                 printf("write error: %d\n", err);
@@ -333,21 +332,24 @@ void recv_files(int connfd){
     struct timeval tv;    
     time_t secs = 0;
     size_t bytes_received = 0;
-    char *md5;
+    char md5[33];
+    char target[4] = "ctrl";
+    // bug here, 缓冲区中剩余的空间不足以容下控制信息, 导致访问不安全的位置
+    // 但是为什么使用ssl传输时候不会出现这种问题????
     while((recv_size = read(connfd, buf, sizeof(buf))) > 0){
         CTRLINFO *ctrlinfo_ptr = (CTRLINFO *)(buf + recv_size - sizeof(CTRLINFO));
         // printf("%s", buf);
-        if (strncmp(ctrlinfo_ptr->magic, "ctrl", 4) == 0){
+        // printf("%s\n", ctrlinfo_ptr->magic);
+        if (strncmp(ctrlinfo_ptr->magic, target, 4) == 0){
             if (ctrlinfo_ptr->type == NEW){
                 if (fp != NULL) fclose(fp);
                 // 从 buf 中分割出md5值
-                strtok(buf, " ");
-                char *md5_buf = strtok(NULL, " ");
+                char *md5_buf = ctrlinfo_ptr->md5;
                 strcpy(md5, md5_buf);
 
                 // 从 buf 中分割出文件名
                 char *savepath = get_config("savepath");
-                char *filename = strtok(NULL, " ");
+                char *filename = ctrlinfo_ptr->filename;
                 // filename = buf + strlen(filename) + 1;
                 filename = basename(filename);
                 printf("receiving new file: %s\n", filename);
@@ -369,16 +371,12 @@ void recv_files(int connfd){
                     return ;
                 }
                 size_t end_off = ftell(fp);
-                memset(buf, 0, sizeof(buf));
-                int len = sprintf(buf, "ok %ld\n", end_off);
-                printf("%s\n", buf);
-                assert(len != -1);
-                // send(connfd, "ok", 3, 0);
                 CTRLINFO ok_ctrl = {
                     .magic = "ctrl", .type = OK_TO_RECEIVE,
-                    .offset = end_off, .size = ctrlinfo_ptr->size
+                    .offset = end_off, .size = ctrlinfo_ptr->size - end_off
                 };
                 write(connfd, &ok_ctrl, sizeof(CTRLINFO));
+                memset(buf, 0, sizeof(buf));
                 continue;
             } else if (ctrlinfo_ptr->type == FIN){
                 // 接收到发送方的结束信号, 关闭文件描述符
@@ -392,14 +390,12 @@ void recv_files(int connfd){
                     }
                 }
                 // 准备接收下一个文件
-                // send(connfd, "fin", 4, 0);
-                // send(connfd, "fin", 4, 0);
                 CTRLINFO fin_ctrl = {
                     .magic = "ctrl", .type = FIN
                 };
                 write(connfd, &fin_ctrl, sizeof(CTRLINFO));
                 // write(fd, buf, recv_size - 4);
-                fwrite(buf, recv_size - 4, 1, fp);
+                fwrite(buf, recv_size - sizeof(CTRLINFO), 1, fp);
                 fflush(fp);
                 memset(buf, 0, recv_size);
                 printf("\nsaved to %s\n", filepath);
@@ -413,7 +409,7 @@ void recv_files(int connfd){
             }
         } else {
             // write(fd, buf, recv_size);
-            fwrite(buf, recv_size, 1, fp);
+            fwrite(buf, sizeof(char), recv_size, fp);
             fflush(fp);
             if (gettimeofday(&tv, NULL) == 0){
                 bytes_received += recv_size;
@@ -425,6 +421,7 @@ void recv_files(int connfd){
                 }
             }
         }
+        fflush(stdout);
         memset(buf, 0, sizeof(buf));
     }
     // if (fd != 0) close(fd);
@@ -434,7 +431,7 @@ void recv_files(int connfd){
  * 发送发送列表中的所有文件
  * @param connfd 连接描述符
 */
-void send_files_ssl(int connfd){
+void send_files_ssl(SSL *ssl){
     if (file_head == NULL){
         printf("No files added\n");
         return;
@@ -448,7 +445,6 @@ void send_files_ssl(int connfd){
         CTRLINFO ctrlinfo = {
             .magic = "ctrl", .type = NEW, 
             .offset = 0, .size = current->size};
-        // printf("%x, %x, %x, %x\n", &ctrlinfo, ctrlinfo.magic, ctrlinfo.filename, ctrlinfo.md5);
         strcpy(ctrlinfo.filename, current->filename);
         strcpy(ctrlinfo.md5, current->md5);
         memcpy(buf, &ctrlinfo, sizeof(CTRLINFO));
@@ -526,7 +522,7 @@ void send_files_ssl(int connfd){
  * @param connfd 连接描述符
  * @return void
 */
-void recv_files_ssl(int connfd){
+void recv_files_ssl(SSL *ssl){
     FILE *fp = NULL;
     size_t recv_size;
     char buf[BUF_SIZE];
@@ -566,25 +562,17 @@ void recv_files_ssl(int connfd){
                 }
                 // 向发送方发送确认信息, 通知发送方可以开始发送文件内容
                 // 且发送文件的末尾位置
-                // size_t end_off = lseek(fd, 0, SEEK_END);
                 if (fseek(fp, 0, SEEK_END) < 0){
                     perror("fseek error");
                     return ;
                 }
                 size_t end_off = ftell(fp);
-                // memset(buf, 0, sizeof(buf));
-                // int len = sprintf(buf, "ok %ld\n", end_off);
-                // printf("%s\n", buf);
-                // assert(len != -1);
                 CTRLINFO ok_ctrl = {
                     .magic = "ctrl", .type = OK_TO_RECEIVE,
                     .offset = end_off, .size = ctrlinfo_ptr->size - end_off
                 };
-                // printf("ctrl->size: %ld\n", ctrlinfo_ptr->size);
                 SSL_write(ssl, &ok_ctrl, sizeof(CTRLINFO));
                 memset(buf, 0, sizeof(buf));
-                // send(connfd, "ok", 3, 0);
-                // SSL_write(ssl, buf, len);
                 continue;
             } else if (ctrlinfo_ptr->type == FIN){
                 // 接收到发送方的结束信号, 关闭文件描述符
@@ -629,8 +617,6 @@ void recv_files_ssl(int connfd){
                 }
             }
         }
-        // write(fd, buf, recv_size);
-        // printf("\n");
         memset(buf, 0, sizeof(buf));
     }
     if (fp != NULL) fclose(fp);
