@@ -9,8 +9,8 @@ typedef struct portalfile{
     size_t size;
     char md5[33];
     struct portalfile *next;
-    size_t *slices;
-    FILE **fps;
+    // size_t *slices;
+    // FILE **fps;
 }file_node;
 
 int add_file(char *filename);

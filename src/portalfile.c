@@ -72,18 +72,8 @@ int add_file(char *filename){
         new_file->fp = fp;
     }
     
-    // int fd;
-    // if ((fd = open(filename, O_RDONLY)) < 0){
-    //     perror("open error: please check the file is exist!");
-    //     return -1;
-    // };
     // 获取文件大小
     size_t size;
-    // if ((size = lseek(fd, 0, SEEK_END)) < 0){
-    //     perror("lseek error");
-    //     return -1;
-    // }
-    // lseek(fd, 0, SEEK_SET);
 
     if (fseek(fp, 0, SEEK_END) < 0){
         perror("fseek error");
@@ -102,31 +92,25 @@ int add_file(char *filename){
 
     // 将文件信息添加到发送列表中
     size_t threads = atoi(get_config("threads"));
-    // new_file->fd = fd;
-    // new_file->fds = (int *)malloc(sizeof(int) * threads);
-    // for (int i = 0; i < threads; i ++){
-    //     new_file->fds[i] = open(filename, O_RDONLY);
-    //     // printf("fd: %d\n", new_file->fds[i]);
-    // }
 
-    new_file->fps = (FILE **)malloc(sizeof(FILE *) * threads);
-    for (int i = 0; i < threads; i ++){
-        new_file->fps[i] = fopen(filename, "r");
-    }
+    // new_file->fps = (FILE **)malloc(sizeof(FILE *) * threads);
+    // for (int i = 0; i < threads; i ++){
+    //     new_file->fps[i] = fopen(filename, "r");
+    // }
     // close(fd);
     strcpy(new_file->filename, filename);
     new_file->size = size;
     // 对文件进行分片, 每个线程发送一个分片
-    new_file->slices = (size_t *)malloc(sizeof(size_t) * (threads + 1));
-    size_t slice_size = size / threads;
+    // new_file->slices = (size_t *)malloc(sizeof(size_t) * (threads + 1));
+    // size_t slice_size = size / threads;
     // 为每个线程平均分配文件分片
     // 第一个线程发送的内容为[0, slices[1]]
     // 其余线程发送的内容为[slices[i] + 1, slices[i + 1]]
-    for (int i = 0; i < threads; i ++){
-        new_file->slices[i] = i * slice_size;
-    }
+    // for (int i = 0; i < threads; i ++){
+    //     new_file->slices[i] = i * slice_size;
+    // }
     // 最后一个线程的分片大小为剩余的文件大小
-    new_file->slices[threads] = size;
+    // new_file->slices[threads] = size;
     new_file->next = NULL;
     // 将文件信息添加到发送列表中
     if (file_head == NULL){
@@ -195,10 +179,10 @@ void remove_file(int index){
         if (i == index){
             prev -> next = current -> next;
             fclose(current->fp);
-            for (int i = 0; i < threads; i ++){
-                fclose(current->fps[i]);
-            }
-            free(current->fps);
+            // for (int i = 0; i < threads; i ++){
+            //     fclose(current->fps[i]);
+            // }
+            // free(current->fps);
             free(current);
             return;
         }
@@ -239,12 +223,12 @@ void release_files(){
     size_t threads = atoi(get_config("threads"));
     while(current != NULL){
         next = current -> next;
-        free(current->slices);
+        // free(current->slices);
         fclose(current->fp);
-        for (int i = 0; i < threads; i ++){
-            fclose(current->fps[i]);
-        }
-        free(current->fps);
+        // for (int i = 0; i < threads; i ++){
+        //     fclose(current->fps[i]);
+        // }
+        // free(current->fps);
         free(current);
         current = next;
     }
