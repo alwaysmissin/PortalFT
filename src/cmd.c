@@ -16,10 +16,12 @@
 #include <openssl/err.h>
 
 int connfd = 0;
+int connfd_list[MAXTHREAD] = {0};
 int listenfd = 0;
 
 extern SSL_CTX *ctx;
 SSL *ssl = NULL;
+SSL **ssl_list = NULL;
 
 /**
  * 获取用户的输入, 并返回用户输入的字符串
@@ -144,14 +146,14 @@ static int cmd_config(char *args){
  * 不需要参数, 监听的端口使用config命令进行配置
  */
 static int cmd_listen(char *args){
-    if (connfd){
-        printf(ANSI_FG_RED "Please close the connection first\n" ANSI_NONE);
-        return 0;
-    }
     int ssl_enable = atoi(get_config("ssl"));
     if (ssl_enable){
         listen_as_server_ssl(get_config("port"));
     } else {
+        if (connfd){
+            printf(ANSI_FG_RED "Please close the connection first\n" ANSI_NONE);
+            return 0;
+        }
         listen_as_server(get_config("port"));
     }
     // 监听端口, 并设置连接的文件描述符
@@ -166,18 +168,23 @@ static int cmd_connect(char *args){
         printf(ANSI_FG_BLUE "Usage: connect <ip>\n" ANSI_NONE);
         return 0;
     }
-    if (connfd){
-        printf(ANSI_FG_RED "Please close the connection first\n" ANSI_NONE);
-        return 0;
-    }
     char *host = strtok(NULL, " ");
     int ssl_enable = atoi(get_config("ssl"));
     if (ssl_enable){
-        ssl = connect_as_client_ssl(ctx, host, get_config("port"));
+        int num_threads = atoi(get_config("threads"));
+        ssl_list = malloc(sizeof(SSL *) * num_threads);
+        for (int i = 0; i < num_threads; i++) {
+            ssl_list[i] = connect_as_client_ssl(ctx, host, get_config("port"));
+        }
+        // ssl = connect_as_client_ssl(ctx, host, get_config("port"));
     } else {
+        if (connfd){
+            printf(ANSI_FG_RED "Please close the connection first\n" ANSI_NONE);
+            return 0;
+        }
         connfd = connect_as_client(host, get_config("port"));
     }
-    printf(ANSI_FG_GREEN "Connected to %s:%s on fd %d\n" ANSI_NONE, host, get_config("port"), connfd);
+    printf(ANSI_FG_GREEN "Connected to %s:%s\n" ANSI_NONE, host, get_config("port"));
 }
 
 /**
@@ -193,6 +200,18 @@ static int cmd_close_conn(char *args){
     printf("Connection closed\n");
 }
 
+void *send_files_thread(void *arg){
+    int ssl_index = *(int *)arg;
+    send_files_ssl(ssl_list[ssl_index]);
+    return NULL;
+}
+
+void *recv_files_thread(void *arg){
+    int ssl_index = *(int *)arg;
+    recv_files_ssl(ssl_list[ssl_index], ssl_index);
+    return NULL;
+}
+
 /**
  * 在建立连接后, 向对方发送文件列表中的文件
  * 在对方确认接收之前, 会阻塞, 直到对方确认接收后, 开始向对方发送文件
@@ -200,11 +219,23 @@ static int cmd_close_conn(char *args){
 static int cmd_send(char *args){
     int ssl_enable = atoi(get_config("ssl"));
     if (ssl_enable){
-        if (ssl == NULL) {
+        if (ssl_list == NULL) {
             printf("Please connect to the server first\n");
             return 0;
         }
-        send_files_ssl(ssl);
+        int num_threads = atoi(get_config("threads"));
+        pthread_t *tids = malloc(sizeof(pthread_t) * num_threads);
+        int *indexs = malloc(sizeof(int) * num_threads);
+        for (int i = 0; i < num_threads; i++){
+            indexs[i] = i;
+            pthread_create(&tids[i], NULL, send_files_thread, indexs + i);
+        }
+        for (int i = 0;i < num_threads; i++){
+            pthread_join(tids[i], NULL);
+        }
+        free(tids);
+        free(indexs);
+        // send_files_ssl(ssl);
     } else {
         if (connfd == 0){
             printf("Please connect to the server first\n");
@@ -222,11 +253,22 @@ static int cmd_send(char *args){
 static int cmd_receive(char *args){
     int ssl_enable = atoi(get_config("ssl"));
     if (ssl_enable){
-        if (ssl == NULL){
+        if (ssl_list == NULL){
             printf(ANSI_FG_RED "Please connect to the server first\n" ANSI_NONE);
             return 0;
         }
-        recv_files_ssl(ssl);
+        int num_threads = atoi(get_config("threads"));
+        pthread_t *tids = malloc(sizeof(pthread_t) * num_threads);
+        int *indexs = malloc(sizeof(int) * num_threads);
+        for (int i = 0; i < num_threads; i++){
+            indexs[i] = i;
+            pthread_create(&tids[i], NULL, recv_files_thread, indexs + i);
+        }
+        for (int i = 0;i < num_threads; i++){
+            pthread_join(tids[i], NULL);
+        }
+        free(tids);
+        free(indexs);
     } else {
         if (connfd == 0){
             printf(ANSI_FG_RED "Please connect to the server first\n" ANSI_NONE);

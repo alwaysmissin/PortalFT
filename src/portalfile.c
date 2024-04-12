@@ -452,6 +452,12 @@ void send_files_ssl(SSL *ssl){
             .offset = 0, .size = current->size};
         strcpy(ctrlinfo.filename, current->filename);
         strcpy(ctrlinfo.md5, current->md5);
+        // 打开文件
+        FILE *fp = fopen(current->filename, "r");
+        if (fp == NULL){
+            perror("open error: please check the file is exist!");
+            return;
+        }
         memcpy(buf, &ctrlinfo, sizeof(CTRLINFO));
         // 发送控制信息, 该控制信息是一个新文件, 发送的内容包括了文件名, 大小和md5校验值
         // send(connfd, buf, strlen(buf), 0);
@@ -481,23 +487,23 @@ void send_files_ssl(SSL *ssl){
             } else {
                 LogBlue("Start to send file: %s from the offset %ld with %ld bytes", current->filename, end_off, nbytes_left);
                 // lseek(current->fd, end_off, SEEK_SET);
-                fseek(current->fp, end_off, SEEK_SET);
+                fseek(fp, end_off, SEEK_SET);
             }
             memset(buf, 0, sizeof(buf));
         }
         
         size_t n;
-        // 否则使用read-send的方式发送文件
+        // 使用read-send的方式发送文件
         int ret, err;
-        while(!feof(current->fp) && nbytes_left > 0){
+        while(!feof(fp) && nbytes_left > 0){
             n = fread(buf, sizeof(char), nbytes_left < BUF_SIZE ? nbytes_left : BUF_SIZE, current->fp);
             nbytes_left -= n;
-            // printf("n: %ld\n", n);
+            printf("n: %ld\n", n);
             if((ret = SSL_write(ssl, buf, n)) < 0){
                 err = SSL_get_error(ssl, ret);
                 printf("SSL_write error: %d\n", err);
             }
-            // printf("ret: %ld\n", ret);
+            printf("ret: %ld\n", ret);
             memset(buf, 0, n);
         }
 
@@ -512,7 +518,7 @@ void send_files_ssl(SSL *ssl){
         assert(strcmp(recv_fin_ctrl.magic, "ctrl") == 0);
         assert(recv_fin_ctrl.type == FIN);
         // assert(strcmp(buf, "fin") == 0);
-        fseek(current->fp, 0, SEEK_SET);
+        fclose(fp);
     }
 
     // 完成所有文件的发送后, 向接收方发送结束信号
@@ -531,14 +537,17 @@ void send_files_ssl(SSL *ssl){
  * @param connfd 连接描述符
  * @return void
 */
-void recv_files_ssl(SSL *ssl){
+void recv_files_ssl(SSL *ssl, int nth_thread){
     FILE *fp = NULL;
     size_t recv_size;
     char buf[BUF_SIZE];
     char filepath[128];
     memset(buf, 0, sizeof(buf));
+    // 用于计算接收文件的速度
     struct timeval tv;    
     time_t secs = 0;
+    
+    size_t NR_THREAD = atoi(get_config("threads"));
     size_t bytes_received = 0;
     char md5[33];
     char magic[5];
@@ -550,11 +559,10 @@ void recv_files_ssl(SSL *ssl){
             CTRLINFO *ctrlinfo_ptr = (CTRLINFO *)(buf);
             if (ctrlinfo_ptr->type == NEW){
                 if (fp != NULL) fclose(fp);
-                // 从 buf 中分割出md5值
+                // 获得md5值
                 char *md5_buf = ctrlinfo_ptr->md5;
                 strcpy(md5, md5_buf);
 
-                // 从 buf 中分割出文件名
                 char *savepath = get_config("savepath");
                 char *filename = ctrlinfo_ptr->filename;
                 // filename = buf + strlen(filename) + 1;
@@ -577,9 +585,19 @@ void recv_files_ssl(SSL *ssl){
                     return ;
                 }
                 size_t end_off = ftell(fp);
+                size_t nbytes_left = ctrlinfo_ptr->size - end_off;
+                // 计算当前线程所要写入的文件位置和大小
+                size_t slice_size = nbytes_left / NR_THREAD;
+                if (nth_thread == NR_THREAD - 1){
+                    nbytes_left = nbytes_left - slice_size * (NR_THREAD - 1);
+                } else {
+                    nbytes_left = slice_size;
+                }
+                end_off = end_off + slice_size * nth_thread;
+                fseek(fp, end_off, SEEK_SET);
                 CTRLINFO ok_ctrl = {
                     .magic = "ctrl", .type = OK_TO_RECEIVE,
-                    .offset = end_off, .size = ctrlinfo_ptr->size - end_off
+                    .offset = end_off, .size = nbytes_left
                 };
                 SSL_write(ssl, &ok_ctrl, sizeof(CTRLINFO));
                 memset(buf, 0, sizeof(buf));

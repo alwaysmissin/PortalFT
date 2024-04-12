@@ -33,7 +33,7 @@ void release_files();
 void send_files(int connfd);
 void recv_files(int connfd);
 void send_files_ssl(SSL *ssl);
-void recv_files_ssl(SSL *ssl);
+void recv_files_ssl(SSL *ssl, int nth_thread);
 void calc_md5(FILE *fp, char *md5);
 int check_md5(FILE *fp, char *target_md5);
 #endif
