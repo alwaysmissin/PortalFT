@@ -256,9 +256,9 @@ void send_files(int connfd){
             .offset = 0, .size = current->size};
         strcpy(ctrlinfo.filename, current->filename);
         strcpy(ctrlinfo.md5, current->md5);
-        memcpy(buf, &ctrlinfo, sizeof(CTRLINFO));
+        // memcpy(buf, &ctrlinfo, sizeof(CTRLINFO));
         // 发送控制信息, 该控制信息是一个新文件, 发送的内容包括了文件名, 大小和md5校验值
-        write(connfd, buf, sizeof(CTRLINFO));
+        write(connfd, &ctrlinfo, sizeof(CTRLINFO));
         memset(buf, 0, sizeof(buf));
         // 发送文件名后, 等待接收方确认
         LogBlue("Sending file: %s", current->filename);
@@ -271,7 +271,7 @@ void send_files(int connfd){
             // size_t end_off = atol(buf + strlen(ok) + 1);
             // assert(strcmp(ok, "ok") == 0);
             CTRLINFO *ctrlinfo_ptr = (CTRLINFO *)buf;
-            assert(strncmp(ctrlinfo_ptr->magic, "ctrl", 4) == 0);
+            assert(strcmp(ctrlinfo_ptr->magic, "ctrl") == 0);
             assert(ctrlinfo_ptr->type == OK_TO_RECEIVE);
             size_t end_off = ctrlinfo_ptr->offset;
             nbytes_left = ctrlinfo_ptr->size;
@@ -292,9 +292,12 @@ void send_files(int connfd){
         while(!feof(current->fp) && nbytes_left > 0){
             n = fread(buf, sizeof(char), nbytes_left < BUF_SIZE ? nbytes_left : BUF_SIZE, current->fp);
             nbytes_left -= n;
+            // TODO: 对于大文件, 最后的收发大小不一致
+            // printf("n: %ld\n", n);
             if((ret = write(connfd, buf, n)) < 0){
                 printf("write error: %d\n", err);
             }
+            // printf("ret: %d\n", ret);
             memset(buf, 0, n);
         }
         // 当一个文件发送完毕后, 向接收方发送当前文件传输结束信号
@@ -302,9 +305,11 @@ void send_files(int connfd){
             .magic = "ctrl", .type = FIN
         };
         write(connfd, &fin_ctrl, sizeof(CTRLINFO));
-        read(connfd, &fin_ctrl, sizeof(CTRLINFO));
-        assert(strncmp(fin_ctrl.magic, "ctrl", 4) == 0);
-        assert(fin_ctrl.type == FIN);
+        printf("waiting for fin from receiver\n");
+        CTRLINFO recv_fin_ctrl;
+        read(connfd, &recv_fin_ctrl, sizeof(CTRLINFO));
+        assert(strcmp(recv_fin_ctrl.magic, "ctrl") == 0);
+        assert(recv_fin_ctrl.type == FIN);
         // assert(strcmp(buf, "fin") == 0);
         fseek(current->fp, 0, SEEK_SET);
     }
@@ -333,14 +338,15 @@ void recv_files(int connfd){
     time_t secs = 0;
     size_t bytes_received = 0;
     char md5[33];
-    char target[4] = "ctrl";
-    // bug here, 缓冲区中剩余的空间不足以容下控制信息, 导致访问不安全的位置
+    char magic[5];
     // 但是为什么使用ssl传输时候不会出现这种问题????
     while((recv_size = read(connfd, buf, sizeof(buf))) > 0){
-        CTRLINFO *ctrlinfo_ptr = (CTRLINFO *)(buf + recv_size - sizeof(CTRLINFO));
+        strncpy(magic, buf, 4);
+        // printf("recv_size: %ld\n", recv_size);
         // printf("%s", buf);
-        // printf("%s\n", ctrlinfo_ptr->magic);
-        if (strncmp(ctrlinfo_ptr->magic, target, 4) == 0){
+        // printf("%4s\n", ctrlinfo_ptr->magic);
+        if (strcmp(magic, "ctrl") == 0){
+            CTRLINFO *ctrlinfo_ptr = (CTRLINFO *)(buf);
             if (ctrlinfo_ptr->type == NEW){
                 if (fp != NULL) fclose(fp);
                 // 从 buf 中分割出md5值
@@ -421,7 +427,6 @@ void recv_files(int connfd){
                 }
             }
         }
-        fflush(stdout);
         memset(buf, 0, sizeof(buf));
     }
     // if (fd != 0) close(fd);
@@ -465,7 +470,7 @@ void send_files_ssl(SSL *ssl){
             // assert(strcmp(ok, "ok") == 0);
             CTRLINFO *ctrlinfo_ptr = (CTRLINFO *)buf;
             // printf("ctrlinfo_ptr->magic: %s\n", ctrlinfo_ptr->magic);
-            assert(strncmp(ctrlinfo_ptr->magic, "ctrl", 4) == 0);
+            assert(strcmp(ctrlinfo_ptr->magic, "ctrl") == 0);
             assert(ctrlinfo_ptr->type == OK_TO_RECEIVE);
             size_t end_off = ctrlinfo_ptr->offset;
             nbytes_left = ctrlinfo_ptr->size;
@@ -487,10 +492,12 @@ void send_files_ssl(SSL *ssl){
         while(!feof(current->fp) && nbytes_left > 0){
             n = fread(buf, sizeof(char), nbytes_left < BUF_SIZE ? nbytes_left : BUF_SIZE, current->fp);
             nbytes_left -= n;
+            // printf("n: %ld\n", n);
             if((ret = SSL_write(ssl, buf, n)) < 0){
                 err = SSL_get_error(ssl, ret);
                 printf("SSL_write error: %d\n", err);
             }
+            // printf("ret: %ld\n", ret);
             memset(buf, 0, n);
         }
 
@@ -499,9 +506,11 @@ void send_files_ssl(SSL *ssl){
             .magic = "ctrl", .type = FIN
         };
         SSL_write(ssl, &fin_ctrl, sizeof(CTRLINFO));
-        SSL_read(ssl, &fin_ctrl, sizeof(CTRLINFO));
-        assert(strncmp(fin_ctrl.magic, "ctrl", 4) == 0);
-        assert(fin_ctrl.type == FIN);
+        printf("waiting for fin from receiver\n");
+        CTRLINFO recv_fin_ctrl;
+        SSL_read(ssl, &recv_fin_ctrl, sizeof(CTRLINFO));
+        assert(strcmp(recv_fin_ctrl.magic, "ctrl") == 0);
+        assert(recv_fin_ctrl.type == FIN);
         // assert(strcmp(buf, "fin") == 0);
         fseek(current->fp, 0, SEEK_SET);
     }
@@ -532,12 +541,13 @@ void recv_files_ssl(SSL *ssl){
     time_t secs = 0;
     size_t bytes_received = 0;
     char md5[33];
+    char magic[5];
     // while((recv_size = recv(connfd, buf, sizeof(buf), 0)) > 0){
     while((recv_size = SSL_read(ssl, buf, sizeof(buf))) > 0){
-        CTRLINFO *ctrlinfo_ptr = (CTRLINFO *)(buf + recv_size - sizeof(CTRLINFO));
+        strncpy(magic, buf, 4);
         // printf("recv_size: %ld\n", recv_size);
-        // printf("recv_size: %ld buf: %s\n", recv_size, buf);
-        if (strncmp(ctrlinfo_ptr->magic, "ctrl", 4) == 0){
+        if (strcmp(magic, "ctrl") == 0){
+            CTRLINFO *ctrlinfo_ptr = (CTRLINFO *)(buf);
             if (ctrlinfo_ptr->type == NEW){
                 if (fp != NULL) fclose(fp);
                 // 从 buf 中分割出md5值

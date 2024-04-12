@@ -15,7 +15,7 @@ typedef struct portalfile{
 }file_node;
 
 typedef struct{
-    char magic[4];
+    char magic[5];
     char type;
     char filename[128];
     off_t offset;
