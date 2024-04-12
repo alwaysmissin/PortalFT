@@ -173,7 +173,7 @@ static int cmd_connect(char *args){
     char *host = strtok(NULL, " ");
     int ssl_enable = atoi(get_config("ssl"));
     if (ssl_enable){
-        connfd = connect_as_client_ssl(host, get_config("port"));
+        ssl = connect_as_client_ssl(ctx, host, get_config("port"));
     } else {
         connfd = connect_as_client(host, get_config("port"));
     }
