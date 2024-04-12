@@ -173,7 +173,7 @@ static int cmd_connect(char *args){
     char *host = strtok(NULL, " ");
     int ssl_enable = atoi(get_config("ssl"));
     if (ssl_enable){
-        connfd = connect_as_client_ssl(host, get_config("port"));
+        ssl = connect_as_client_ssl(ctx, host, get_config("port"));
     } else {
         connfd = connect_as_client(host, get_config("port"));
     }
@@ -198,14 +198,18 @@ static int cmd_close_conn(char *args){
  * 在对方确认接收之前, 会阻塞, 直到对方确认接收后, 开始向对方发送文件
  */
 static int cmd_send(char *args){
-    if (connfd == 0){
-        printf("Please connect to the server first\n");
-        return 0;
-    }
     int ssl_enable = atoi(get_config("ssl"));
     if (ssl_enable){
-        send_files_ssl(connfd);
+        if (ssl == NULL) {
+            printf("Please connect to the server first\n");
+            return 0;
+        }
+        send_files_ssl(ssl);
     } else {
+        if (connfd == 0){
+            printf("Please connect to the server first\n");
+            return 0;
+        }
         send_files(connfd);
     }
 }
@@ -216,14 +220,18 @@ static int cmd_send(char *args){
  * 接收的文件将会保存在配置的路径中
  */
 static int cmd_receive(char *args){
-    if (connfd == 0){
-        printf(ANSI_FG_RED "Please connect to the server first\n" ANSI_NONE);
-        return 0;
-    }
     int ssl_enable = atoi(get_config("ssl"));
     if (ssl_enable){
-        recv_files_ssl(connfd);
+        if (ssl == NULL){
+            printf(ANSI_FG_RED "Please connect to the server first\n" ANSI_NONE);
+            return 0;
+        }
+        recv_files_ssl(ssl);
     } else {
+        if (connfd == 0){
+            printf(ANSI_FG_RED "Please connect to the server first\n" ANSI_NONE);
+            return 0;
+        }
         recv_files(connfd);
     }
     return 0;
