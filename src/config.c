@@ -53,9 +53,11 @@ int config(char *option, char *value)
 	{
 		if (strcmp(config_table[i].option, option) == 0)
 		{
-			// printf("hello %s\n", config_table[i].value);
-			// memcpy(config_table[i].value, value, strlen(value));
-			// return option_func_table[i].handler(value);
+			// 确保线程数不超过最大线程数
+			if (strcmp(option, "threads") == 0 && atoi(value) > MAXTHREAD){
+				printf("threads should be less than %d\n", MAXTHREAD);
+				return 0;
+			};
 			size_t index = config_table[i].index;
 			strcpy(config_list[index], value);
 			return 1;

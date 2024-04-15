@@ -14,6 +14,11 @@ typedef struct portalfile{
     // FILE **fps;
 }file_node;
 
+typedef struct size_record{
+    size_t size_before_recv;
+    struct size_record *next;
+}size_record_node;
+
 typedef struct{
     char magic[5];
     char type;
@@ -33,7 +38,12 @@ void release_files();
 void send_files(int connfd);
 void recv_files(int connfd);
 void send_files_ssl(SSL *ssl);
-void recv_files_ssl(SSL *ssl);
-void calc_md5(FILE *fp, char *md5);
-int check_md5(FILE *fp, char *target_md5);
+void recv_files_ssl(SSL *ssl, int nth_thread);
+void calc_md5(FILE *fp, off_t begin, size_t size, char *md5);
+int check_md5(FILE *fp, off_t begin, size_t size, char *target_md5);
+void start_recv();
+void recv_over();
+void recv_speed_calc(void *arg);
+size_t get_size_before_recv(FILE *fp, size_record_node *node);
+void free_size_record();
 #endif

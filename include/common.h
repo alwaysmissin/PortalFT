@@ -13,6 +13,7 @@
 #include <macro.h>
 
 #define MAXLINE 128
+#define MAXTHREAD 8
 
 void init_log(const char *log_file);
 #endif

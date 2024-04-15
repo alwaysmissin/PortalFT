@@ -20,11 +20,11 @@ run: $(TARGET)
 
 # 链接目标文件生成可执行文件
 $(TARGET): $(OBJS) | $(BUILDDIR)
-	$(CC) $^ $(LDFLAGS) -o $@ -fsanitize=address -g
+	$(CC) -Wall $^ $(LDFLAGS) -o $@ -fsanitize=address -g
 
 # 编译每个源文件生成对应的目标文件
 $(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
-	$(CC) $(CFLAGS) -c $< -o $@ -fsanitize=address -g
+	$(CC) -Wall $(CFLAGS) -c $< -o $@ -fsanitize=address -g
 
 # 创建 build 目录
 $(BUILDDIR):

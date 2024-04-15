@@ -20,9 +20,9 @@ SSL *connect_as_client_ssl(SSL_CTX *ctx, char *host, char *port){
     clientfd = open_clientfd(host, port);
     SSL *ssl = NULL;
     
-    ctx = SSL_CTX_new(SSLv23_client_method());
     if (ctx == NULL){
-        LogRed("Create CTX error!!!");
+        ctx = SSL_CTX_new(SSLv23_client_method());
+        assert(ctx);
     }
     ssl = SSL_new(ctx);
     if (ssl == NULL){

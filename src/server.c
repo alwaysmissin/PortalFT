@@ -10,12 +10,14 @@
 
 
 extern int connfd;
+extern int connfd_list[MAXTHREAD];
 extern int listenfd;
 extern SSL_CTX *ctx;
-extern SSL *ssl;
+// extern SSL *ssl;
+extern SSL **ssl_list;
 
-pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+// pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+// pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 void *handle_connection_ssl(void *arg){
     socklen_t clientlen;
@@ -24,6 +26,7 @@ void *handle_connection_ssl(void *arg){
     fd_set readfds, readyfds;
     FD_ZERO(&readfds);
     FD_SET(listenfd, &readfds);
+    int index = 0;
 
     while(1){
         readyfds = readfds;
@@ -38,16 +41,17 @@ void *handle_connection_ssl(void *arg){
 
             if (new_connfd >= 0){
                 getnameinfo((struct sockaddr *)&clientaddr, clientlen, client_hostname, MAXLINE, client_port, MAXLINE, 0);
-                LogGreen("Connected to (%s, %s)\n", client_hostname, client_port);
+                LogGreen("Connected to (%s, %s)", client_hostname, client_port);
 
-                connfd = new_connfd;
-                ssl = SSL_new(ctx);
-                SSL_set_fd(ssl, connfd);
-                if(SSL_accept(ssl) == -1){
+                connfd_list[index] = new_connfd;
+                ssl_list[index] = SSL_new(ctx);
+                SSL_set_fd(ssl_list[index], new_connfd);
+                if(SSL_accept(ssl_list[index]) == -1){
                     perror("accept");
-                    close(connfd);
+                    close(new_connfd);
                     // break;
                 }
+                index ++;
             }
         }
     }
@@ -55,6 +59,10 @@ void *handle_connection_ssl(void *arg){
 }
 
 void listen_as_server_ssl(char *port){
+    // 确保此前未连接
+    assert(ssl_list == NULL);
+    // 最多支持8个连接
+    ssl_list = (SSL **)malloc(sizeof(SSL *) * MAXTHREAD);
     printf("listenint on port: %s\n", port);
     ctx = SSL_CTX_new(SSLv23_server_method());
     if (ctx == NULL){
