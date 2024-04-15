@@ -258,6 +258,7 @@ static int cmd_receive(char *args){
             return 0;
         }
         int num_threads = atoi(get_config("threads"));
+        printf("thread num: %d\n", num_threads);
         pthread_t *tids = malloc(sizeof(pthread_t) * num_threads);
         int *indexs = malloc(sizeof(int) * num_threads);
         start_recv();

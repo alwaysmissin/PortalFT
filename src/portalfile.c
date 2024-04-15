@@ -551,7 +551,7 @@ void send_files_ssl(SSL *ssl){
         };
         calc_md5(fp, begin_to_check_md5, size_to_check_md5, md5);
         strcpy(fin_ctrl.md5, md5);
-        printf("%s md5: %s\n", current->filename, md5);
+        // printf("%s md5: %s\n", current->filename, md5);
         SSL_write(ssl, &fin_ctrl, sizeof(CTRLINFO));
         printf("waiting for fin from receiver\n");
         CTRLINFO recv_fin_ctrl;
@@ -584,8 +584,13 @@ void recv_files_ssl(SSL *ssl, int nth_thread){
     char buf[BUF_SIZE];
     char filepath[128];
     memset(buf, 0, sizeof(buf));
-    size_record_node *size_record_current = (size_record_node *)malloc(sizeof(size_record_node));
-    size_record_current->next = size_record_head;
+    pthread_mutex_lock(&file_size_lock);
+    if (size_record_head == NULL){
+        size_record_head = (size_record_node *)malloc(sizeof(size_record_node));
+        size_record_head->next = NULL;
+    }
+    pthread_mutex_unlock(&file_size_lock);
+    size_record_node *size_record_current = size_record_head;
 
     size_t size_temp;
     
@@ -650,9 +655,8 @@ void recv_files_ssl(SSL *ssl, int nth_thread){
                 // 接收到发送方的结束信号, 关闭文件描述符
                 // 确保我方开启了md5校验且对方发送了正确的md5值
                 if (atoi(get_config("md5")) && strcmp(md5, "0") != 0){
-                    LogBlue("md5 checking!!");
+                    LogBlue("thread %d: md5 checking!!", nth_thread);
                     strcpy(md5, ctrlinfo_ptr->md5);
-                    printf("%s:%d: %s\n", filepath, nth_thread, md5);
                     if (check_md5(fp, begin_to_check_md5, size_to_check_md5, md5)){
                         printf("md5 check passed\n");
                     } else {
@@ -716,26 +720,20 @@ void recv_speed_calc(void *arg){
 size_t get_size_before_recv(FILE *fp, size_record_node *node){
     size_t size_before_recv = 0;
     // 如果下一个结点为空, 则说明即将要接收到的文件大小还未被记录, 此时将其记录
-    size_record_node *prev_node = node;
     pthread_mutex_lock(&file_size_lock);
-    if (node -> next == NULL){
+    if (node->next == NULL){
         size_record_node *new_node = (size_record_node *)malloc(sizeof(size_record_node));
         if (fseek(fp, 0, SEEK_END) < 0){
             perror("fseek error");
             return 0;
         }
         new_node->size_before_recv = ftell(fp);
+        new_node->next = NULL;
         node->next = new_node;
-        node = node->next;
     }
-    // 如果下一个结点不为空, 则说明即将要接收到的文件大小已经被记录, 直接返回即可
-    else {
-        node = node->next;
-    }
-    if (prev_node->next == size_record_head)
-        free(prev_node);
-    size_before_recv = node -> size_before_recv;
+    node = node->next;
     pthread_mutex_unlock(&file_size_lock);
+    size_before_recv = node->size_before_recv;
     return size_before_recv;
 }
 
