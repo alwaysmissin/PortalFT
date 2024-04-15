@@ -16,8 +16,8 @@ extern SSL_CTX *ctx;
 // extern SSL *ssl;
 extern SSL **ssl_list;
 
-pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+// pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+// pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 void *handle_connection_ssl(void *arg){
     socklen_t clientlen;

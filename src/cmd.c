@@ -260,15 +260,24 @@ static int cmd_receive(char *args){
         int num_threads = atoi(get_config("threads"));
         pthread_t *tids = malloc(sizeof(pthread_t) * num_threads);
         int *indexs = malloc(sizeof(int) * num_threads);
+        start_recv();
         for (int i = 0; i < num_threads; i++){
             indexs[i] = i;
             pthread_create(&tids[i], NULL, recv_files_thread, indexs + i);
         }
+        // 创建一个线程用于计算接收速度
+        pthread_t speed_tid;
+        pthread_create(&speed_tid, NULL, recv_speed_calc, NULL);
+
         for (int i = 0;i < num_threads; i++){
             pthread_join(tids[i], NULL);
         }
+        // 令接收速度线程退出
+        recv_over();
+        pthread_join(speed_tid, NULL);
         free(tids);
         free(indexs);
+        free_size_record();
     } else {
         if (connfd == 0){
             printf(ANSI_FG_RED "Please connect to the server first\n" ANSI_NONE);

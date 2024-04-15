@@ -19,6 +19,17 @@
 file_node *file_head = NULL;
 file_node *file_tail = NULL;
 
+size_record_node *size_record_head = NULL;
+
+// 用于计算接收文件的速度
+static struct timeval tv;    
+static time_t secs = 0;
+static size_t bytes_received = 0;
+
+static int receive_done = 0;
+
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t file_size_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /**
  * 将目录dir下的所有文件添加到发送列表中
@@ -81,14 +92,14 @@ int add_file(char *filename){
     size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
     // 获取文件的md5校验值
-    int md5_enable = atoi(get_config("md5"));
-    if (md5_enable){
-        LogBlue("md5 calculating!");
-        calc_md5(fp, new_file->md5);
-    } else {
-        // 向md5字段填充0
-        sprintf(new_file->md5, "0");
-    }
+    // int md5_enable = atoi(get_config("md5"));
+    // if (md5_enable){
+    //     LogBlue("md5 calculating!");
+    //     calc_md5(fp, 0, size, new_file->md5);
+    // } else {
+    //     // 向md5字段填充0
+    //     sprintf(new_file->md5, "0");
+    // }
 
     // 将文件信息添加到发送列表中
     size_t threads = atoi(get_config("threads"));
@@ -130,14 +141,17 @@ int add_file(char *filename){
  * @param md5 用于存储md5校验值的字符串
  * @return void
 */
-void calc_md5(FILE *fp, char *md5){
+void calc_md5(FILE *fp, off_t begin, size_t size, char *md5){
     unsigned char decrypt[16];
     MD5_CTX md5_ctx;
     MD5Init(&md5_ctx);
+    fseek(fp, begin, SEEK_SET);
     do {
-        unsigned char encrypt[1024];
-        while(!feof(fp)){
-            MD5Update(&md5_ctx, encrypt, fread(encrypt, 1, 1024, fp));
+        unsigned char encrypt[BUF_SIZE];
+        while(!feof(fp) && size > 0){
+            int n = fread(encrypt, sizeof(char), size < BUF_SIZE ? size : BUF_SIZE, fp);
+            MD5Update(&md5_ctx, encrypt, n);
+            size -= n;
         }
         fseek(fp, 0, SEEK_SET);
     } while(0);
@@ -153,10 +167,9 @@ void calc_md5(FILE *fp, char *md5){
  * @param target_md5 目标md5校验值
  * @return 一致返回1, 不一致返回0
 */
-int check_md5(FILE *fp, char *target_md5){
+int check_md5(FILE *fp, off_t begin, size_t size, char *target_md5){
     char md5[33];
-    fseek(fp, 0, SEEK_SET);
-    calc_md5(fp, md5);
+    calc_md5(fp, begin, size, md5);
     // printf("md5: %s\n", md5);
     // printf("target_md5: %s\n", target_md5);
     return strcmp(md5, target_md5) == 0 ? 1 : 0;
@@ -246,6 +259,9 @@ void send_files(int connfd){
         return;
     }
     file_node *current = file_head;
+    off_t begin_to_check_md5;
+    size_t size_to_check_md5;
+    char md5[33];
     char buf[BUF_SIZE];
     memset(buf, 0, sizeof(buf));
     for (int i = 0; current != NULL; i ++, current = current -> next){
@@ -255,7 +271,7 @@ void send_files(int connfd){
             .magic = "ctrl", .type = NEW, 
             .offset = 0, .size = current->size};
         strcpy(ctrlinfo.filename, current->filename);
-        strcpy(ctrlinfo.md5, current->md5);
+        // strcpy(ctrlinfo.md5, current->md5);
         // memcpy(buf, &ctrlinfo, sizeof(CTRLINFO));
         // 发送控制信息, 该控制信息是一个新文件, 发送的内容包括了文件名, 大小和md5校验值
         write(connfd, &ctrlinfo, sizeof(CTRLINFO));
@@ -275,6 +291,8 @@ void send_files(int connfd){
             assert(ctrlinfo_ptr->type == OK_TO_RECEIVE);
             size_t end_off = ctrlinfo_ptr->offset;
             nbytes_left = ctrlinfo_ptr->size;
+            begin_to_check_md5 = end_off;
+            size_to_check_md5 = nbytes_left;
             // lseek(current->fd, end_off, SEEK_SET);
             if (end_off == current->size){
                 LogBlue("File already exists on the receiver side, skip sending");
@@ -304,6 +322,8 @@ void send_files(int connfd){
         CTRLINFO fin_ctrl = {
             .magic = "ctrl", .type = FIN
         };
+        calc_md5(current->fp, begin_to_check_md5, size_to_check_md5, md5);
+        strcpy(fin_ctrl.md5, md5);
         write(connfd, &fin_ctrl, sizeof(CTRLINFO));
         printf("waiting for fin from receiver\n");
         CTRLINFO recv_fin_ctrl;
@@ -333,10 +353,15 @@ void recv_files(int connfd){
     size_t recv_size;
     char buf[BUF_SIZE];
     char filepath[128];
+
+    size_t size_temp;
+
     memset(buf, 0, sizeof(buf));
     struct timeval tv;    
     time_t secs = 0;
     size_t bytes_received = 0;
+    off_t begin_to_check_md5;
+    size_t size_to_check_md5;
     char md5[33];
     char magic[5];
     // 但是为什么使用ssl传输时候不会出现这种问题????
@@ -350,12 +375,15 @@ void recv_files(int connfd){
             if (ctrlinfo_ptr->type == NEW){
                 if (fp != NULL) fclose(fp);
                 // 从 buf 中分割出md5值
-                char *md5_buf = ctrlinfo_ptr->md5;
-                strcpy(md5, md5_buf);
+                // char *md5_buf = ctrlinfo_ptr->md5;
+                // strcpy(md5, md5_buf);
 
                 // 从 buf 中分割出文件名
                 char *savepath = get_config("savepath");
                 char *filename = ctrlinfo_ptr->filename;
+
+                size_temp = ctrlinfo_ptr->size;
+
                 // filename = buf + strlen(filename) + 1;
                 filename = basename(filename);
                 printf("receiving new file: %s\n", filename);
@@ -381,6 +409,8 @@ void recv_files(int connfd){
                     .magic = "ctrl", .type = OK_TO_RECEIVE,
                     .offset = end_off, .size = ctrlinfo_ptr->size - end_off
                 };
+                begin_to_check_md5 = ok_ctrl.offset;
+                size_to_check_md5 = ok_ctrl.size;
                 write(connfd, &ok_ctrl, sizeof(CTRLINFO));
                 memset(buf, 0, sizeof(buf));
                 continue;
@@ -389,7 +419,8 @@ void recv_files(int connfd){
                 // 确保我方开启了md5校验且对方发送了正确的md5值
                 if (atoi(get_config("md5")) && strcmp(md5, "0") != 0){
                     LogBlue("md5 checking!!");
-                    if (check_md5(fp, md5)){
+                    strcpy(md5, ctrlinfo_ptr->md5);
+                    if (check_md5(fp, begin_to_check_md5, size_to_check_md5, md5)){
                         printf("md5 check passed\n");
                     } else {
                         printf("md5 check failed\n");
@@ -443,6 +474,11 @@ void send_files_ssl(SSL *ssl){
     }
     file_node *current = file_head;
     char buf[BUF_SIZE];
+
+    off_t begin_to_check_md5;
+    size_t size_to_check_md5;
+    char md5[33];
+    
     memset(buf, 0, sizeof(buf));
     for (int i = 0; current != NULL; i ++, current = current -> next){
         // sprintf(buf, "new %s %s", current->md5, current->filename);
@@ -451,7 +487,7 @@ void send_files_ssl(SSL *ssl){
             .magic = "ctrl", .type = NEW, 
             .offset = 0, .size = current->size};
         strcpy(ctrlinfo.filename, current->filename);
-        strcpy(ctrlinfo.md5, current->md5);
+        // strcpy(ctrlinfo.md5, current->md5);
         // 打开文件
         FILE *fp = fopen(current->filename, "r");
         if (fp == NULL){
@@ -480,6 +516,8 @@ void send_files_ssl(SSL *ssl){
             assert(ctrlinfo_ptr->type == OK_TO_RECEIVE);
             size_t end_off = ctrlinfo_ptr->offset;
             nbytes_left = ctrlinfo_ptr->size;
+            begin_to_check_md5 = end_off;
+            size_to_check_md5 = nbytes_left;
             // lseek(current->fd, end_off, SEEK_SET);
             if (end_off == current->size){
                 LogBlue("File already exists on the receiver side, skip sending");
@@ -496,14 +534,14 @@ void send_files_ssl(SSL *ssl){
         // 使用read-send的方式发送文件
         int ret, err;
         while(!feof(fp) && nbytes_left > 0){
-            n = fread(buf, sizeof(char), nbytes_left < BUF_SIZE ? nbytes_left : BUF_SIZE, current->fp);
+            n = fread(buf, sizeof(char), nbytes_left < BUF_SIZE ? nbytes_left : BUF_SIZE, fp);
             nbytes_left -= n;
-            printf("n: %ld\n", n);
+            // printf("n: %ld\n", n);
             if((ret = SSL_write(ssl, buf, n)) < 0){
                 err = SSL_get_error(ssl, ret);
                 printf("SSL_write error: %d\n", err);
             }
-            printf("ret: %ld\n", ret);
+            // printf("ret: %ld\n", ret);
             memset(buf, 0, n);
         }
 
@@ -511,6 +549,9 @@ void send_files_ssl(SSL *ssl){
         CTRLINFO fin_ctrl = {
             .magic = "ctrl", .type = FIN
         };
+        calc_md5(fp, begin_to_check_md5, size_to_check_md5, md5);
+        strcpy(fin_ctrl.md5, md5);
+        printf("%s md5: %s\n", current->filename, md5);
         SSL_write(ssl, &fin_ctrl, sizeof(CTRLINFO));
         printf("waiting for fin from receiver\n");
         CTRLINFO recv_fin_ctrl;
@@ -543,18 +584,20 @@ void recv_files_ssl(SSL *ssl, int nth_thread){
     char buf[BUF_SIZE];
     char filepath[128];
     memset(buf, 0, sizeof(buf));
-    // 用于计算接收文件的速度
-    struct timeval tv;    
-    time_t secs = 0;
+    size_record_node *size_record_current = (size_record_node *)malloc(sizeof(size_record_node));
+    size_record_current->next = size_record_head;
+
+    size_t size_temp;
     
     size_t NR_THREAD = atoi(get_config("threads"));
-    size_t bytes_received = 0;
+    off_t begin_to_check_md5;
+    size_t size_to_check_md5;
     char md5[33];
     char magic[5];
     // while((recv_size = recv(connfd, buf, sizeof(buf), 0)) > 0){
     while((recv_size = SSL_read(ssl, buf, sizeof(buf))) > 0){
         strncpy(magic, buf, 4);
-        // printf("recv_size: %ld\n", recv_size);
+        // printf("nth_thread: %d recv_size: %ld\n", nth_thread, recv_size);
         if (strcmp(magic, "ctrl") == 0){
             CTRLINFO *ctrlinfo_ptr = (CTRLINFO *)(buf);
             if (ctrlinfo_ptr->type == NEW){
@@ -562,6 +605,8 @@ void recv_files_ssl(SSL *ssl, int nth_thread){
                 // 获得md5值
                 char *md5_buf = ctrlinfo_ptr->md5;
                 strcpy(md5, md5_buf);
+
+                size_temp = ctrlinfo_ptr->size;
 
                 char *savepath = get_config("savepath");
                 char *filename = ctrlinfo_ptr->filename;
@@ -580,11 +625,8 @@ void recv_files_ssl(SSL *ssl, int nth_thread){
                 }
                 // 向发送方发送确认信息, 通知发送方可以开始发送文件内容
                 // 且发送文件的末尾位置
-                if (fseek(fp, 0, SEEK_END) < 0){
-                    perror("fseek error");
-                    return ;
-                }
-                size_t end_off = ftell(fp);
+                // 确保做记录的文件大小是接收前的文件大小
+                size_t end_off = get_size_before_recv(fp, size_record_current);
                 size_t nbytes_left = ctrlinfo_ptr->size - end_off;
                 // 计算当前线程所要写入的文件位置和大小
                 size_t slice_size = nbytes_left / NR_THREAD;
@@ -599,15 +641,19 @@ void recv_files_ssl(SSL *ssl, int nth_thread){
                     .magic = "ctrl", .type = OK_TO_RECEIVE,
                     .offset = end_off, .size = nbytes_left
                 };
+                begin_to_check_md5 = ok_ctrl.offset;
+                size_to_check_md5 = ok_ctrl.size;
                 SSL_write(ssl, &ok_ctrl, sizeof(CTRLINFO));
                 memset(buf, 0, sizeof(buf));
-                continue;
+                // continue;
             } else if (ctrlinfo_ptr->type == FIN){
                 // 接收到发送方的结束信号, 关闭文件描述符
                 // 确保我方开启了md5校验且对方发送了正确的md5值
                 if (atoi(get_config("md5")) && strcmp(md5, "0") != 0){
                     LogBlue("md5 checking!!");
-                    if (check_md5(fp, md5)){
+                    strcpy(md5, ctrlinfo_ptr->md5);
+                    printf("%s:%d: %s\n", filepath, nth_thread, md5);
+                    if (check_md5(fp, begin_to_check_md5, size_to_check_md5, md5)){
                         printf("md5 check passed\n");
                     } else {
                         printf("md5 check failed\n");
@@ -624,7 +670,7 @@ void recv_files_ssl(SSL *ssl, int nth_thread){
                 fflush(fp);
                 memset(buf, 0, recv_size);
                 printf("\nsaved to %s\n", filepath);
-                continue;
+                // continue;
             } else if (ctrlinfo_ptr->type == FINALL){
                 // write(fd, buf, recv_size - 7);
                 fwrite(buf, recv_size - sizeof(CTRLINFO), 1, fp);
@@ -633,19 +679,73 @@ void recv_files_ssl(SSL *ssl, int nth_thread){
                 break;
             }
         } else {
+            // printf("nth_thread: %d write to %ld with %ld bytes\n", nth_thread, ftell(fp), recv_size);
             fwrite(buf, sizeof(char), recv_size, fp);
             fflush(fp);
-            if (gettimeofday(&tv, NULL) == 0){
-                bytes_received += recv_size;
-                if (tv.tv_sec != secs){
-                    secs = tv.tv_sec;
-                    printf("\rreceiving speed: %ld MB/s                ", bytes_received >> 20);
-                    fflush(stdout);
-                    bytes_received = 0;
-                }
-            }
+            pthread_mutex_lock(&lock);
+            bytes_received += recv_size;
+            pthread_mutex_unlock(&lock);
         }
         memset(buf, 0, sizeof(buf));
     }
     if (fp != NULL) fclose(fp);
+}
+
+void start_recv(){
+    receive_done = 0;
+}
+
+void recv_over(){
+    receive_done = 1;
+}
+
+void recv_speed_calc(void *arg){
+    while(1){
+        if (receive_done) return;
+        if (gettimeofday(&tv, NULL) == 0){
+            if (tv.tv_sec != secs){
+                secs = tv.tv_sec;
+                printf("\rreceiving speed: %ld MB/s                ", bytes_received >> 20);
+                fflush(stdout);
+                bytes_received = 0;
+            }
+        }
+    }
+}
+
+size_t get_size_before_recv(FILE *fp, size_record_node *node){
+    size_t size_before_recv = 0;
+    // 如果下一个结点为空, 则说明即将要接收到的文件大小还未被记录, 此时将其记录
+    size_record_node *prev_node = node;
+    pthread_mutex_lock(&file_size_lock);
+    if (node -> next == NULL){
+        size_record_node *new_node = (size_record_node *)malloc(sizeof(size_record_node));
+        if (fseek(fp, 0, SEEK_END) < 0){
+            perror("fseek error");
+            return 0;
+        }
+        new_node->size_before_recv = ftell(fp);
+        node->next = new_node;
+        node = node->next;
+    }
+    // 如果下一个结点不为空, 则说明即将要接收到的文件大小已经被记录, 直接返回即可
+    else {
+        node = node->next;
+    }
+    if (prev_node->next == size_record_head)
+        free(prev_node);
+    size_before_recv = node -> size_before_recv;
+    pthread_mutex_unlock(&file_size_lock);
+    return size_before_recv;
+}
+
+void free_size_record(){
+    size_record_node *current = size_record_head;
+    size_record_node *next;
+    while(current != NULL){
+        next = current -> next;
+        free(current);
+        current = next;
+    }
+    size_record_head = NULL;
 }
