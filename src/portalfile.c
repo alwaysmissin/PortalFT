@@ -535,7 +535,6 @@ void recv_files_ssl(SSL *ssl, int nth_thread){
                 size_t end_off = get_size_before_recv(fp, size_record_current);
                 size_record_current = size_record_current->next;
                 size_t nbytes_left = ctrlinfo_ptr->size - end_off;
-                printf("nth_thread: %d start to send file: %s from the offset %ld with %ld bytes\n", nth_thread, filename, end_off, nbytes_left);
                 // 计算当前线程所要写入的文件位置和大小
                 size_t slice_size = nbytes_left / NR_THREAD;
                 if (nth_thread == NR_THREAD - 1){
@@ -544,6 +543,7 @@ void recv_files_ssl(SSL *ssl, int nth_thread){
                     nbytes_left = slice_size;
                 }
                 end_off = end_off + slice_size * nth_thread;
+                printf("nth_thread: %d start to receive file: %s from the offset %ld with %ld bytes\n", nth_thread, filename, end_off, nbytes_left);
                 fseek(fp, end_off, SEEK_SET);
                 CTRLINFO ok_ctrl = {
                     .magic = "ctrl", .type = OK_TO_RECEIVE,
@@ -560,9 +560,9 @@ void recv_files_ssl(SSL *ssl, int nth_thread){
                     LogBlue("thread %d: md5 checking!!", nth_thread);
                     strcpy(md5, ctrlinfo_ptr->md5);
                     if (check_md5(fp, begin_to_check_md5, size_to_check_md5, md5)){
-                        printf("md5 check passed\n");
+                        printf("thread %d: md5 check passed\n", nth_thread);
                     } else {
-                        printf("md5 check failed\n");
+                        printf("thread %d: md5 check failed\n", nth_thread);
                     }
                 }
                 // 准备接收下一个文件
