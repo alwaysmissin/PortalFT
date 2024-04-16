@@ -262,6 +262,7 @@ void send_files(int connfd){
         CTRLINFO fin_ctrl = {
             .magic = "ctrl", .type = FIN
         };
+        LogBlue("MD5 calculating......");
         calc_md5(current->fp, begin_to_check_md5, size_to_check_md5, md5);
         strcpy(fin_ctrl.md5, md5);
         write(connfd, &fin_ctrl, sizeof(CTRLINFO));
@@ -459,6 +460,7 @@ void send_files_ssl(SSL *ssl){
         CTRLINFO fin_ctrl = {
             .magic = "ctrl", .type = FIN
         };
+        LogBlue("MD5 calculating......");
         calc_md5(fp, begin_to_check_md5, size_to_check_md5, md5);
         strcpy(fin_ctrl.md5, md5);
         SSL_write(ssl, &fin_ctrl, sizeof(CTRLINFO));
