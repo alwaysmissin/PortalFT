@@ -23,6 +23,18 @@ extern SSL_CTX *ctx;
 SSL *ssl = NULL;
 SSL **ssl_list = NULL;
 
+static int cmd_help(char *args);
+static int cmd_quit(char *args);
+static int cmd_config(char *args);
+static int cmd_listen(char *args);
+static int cmd_connect(char *args);
+static int cmd_send(char *args);
+static int cmd_receive(char *args);
+static int cmd_close_conn(char *args);
+static int cmd_add(char *args);
+static int cmd_remove(char *args);
+static int cmd_list(char *args);
+
 /**
  * 获取用户的输入, 并返回用户输入的字符串
  * 使用prompt作为提示符
@@ -138,7 +150,7 @@ static int cmd_config(char *args){
         printf(ANSI_FG_BLUE "Usage: config <option> <value>\n" ANSI_NONE);
         return 0;
     }
-    config(option, value);
+    return config(option, value);
 }
 
 /**
@@ -157,6 +169,7 @@ static int cmd_listen(char *args){
         listen_as_server(get_config("port"));
     }
     // 监听端口, 并设置连接的文件描述符
+    return 0;
 }
 
 /**
@@ -176,7 +189,6 @@ static int cmd_connect(char *args){
         for (int i = 0; i < num_threads; i++) {
             ssl_list[i] = connect_as_client_ssl(ctx, host, get_config("port"));
         }
-        // ssl = connect_as_client_ssl(ctx, host, get_config("port"));
     } else {
         if (connfd){
             printf(ANSI_FG_RED "Please close the connection first\n" ANSI_NONE);
@@ -185,6 +197,7 @@ static int cmd_connect(char *args){
         connfd = connect_as_client(host, get_config("port"));
     }
     printf(ANSI_FG_GREEN "Connected to %s:%s\n" ANSI_NONE, host, get_config("port"));
+    return 0;
 }
 
 /**
@@ -198,6 +211,7 @@ static int cmd_close_conn(char *args){
     close(connfd);
     connfd = 0;
     printf("Connection closed\n");
+    return 0;
 }
 
 void *send_files_thread(void *arg){
@@ -243,6 +257,7 @@ static int cmd_send(char *args){
         }
         send_files(connfd);
     }
+    return 0;
 }
 
 /**
@@ -326,6 +341,7 @@ static int cmd_remove(char *args){
         return 0;
     }
     remove_file(NO);
+    return 0;
 }
 
 /**
@@ -350,13 +366,6 @@ char *command_generator(const char *text, int state){
                 return strdup(cmd_table[i].name);
             }
         }
-        // extern file_node *file_head;
-        // file_node *current = file_head;
-        // for (; current != NULL;current = current -> next){
-        //     if (!strncmp(current -> filename, text, strlen(text))){
-        //         return strdup(current -> filename);
-        //     }
-        // }
     }
     return NULL;
 }

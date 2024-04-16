@@ -43,7 +43,7 @@ void calc_md5(FILE *fp, off_t begin, size_t size, char *md5);
 int check_md5(FILE *fp, off_t begin, size_t size, char *target_md5);
 void start_recv();
 void recv_over();
-void recv_speed_calc(void *arg);
+void *recv_speed_calc(void *arg);
 size_t get_size_before_recv(FILE *fp, size_record_node *node);
 void free_size_record();
 #endif

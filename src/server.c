@@ -8,16 +8,11 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
-
 extern int connfd;
 extern int connfd_list[MAXTHREAD];
 extern int listenfd;
 extern SSL_CTX *ctx;
-// extern SSL *ssl;
 extern SSL **ssl_list;
-
-// pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-// pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 void *handle_connection_ssl(void *arg){
     socklen_t clientlen;
@@ -111,6 +106,7 @@ void *handle_connection(void *arg){
             }
         }
     }
+    pthread_exit(NULL);
 }
 
 void listen_as_server(char *port){

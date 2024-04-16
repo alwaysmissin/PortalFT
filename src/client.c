@@ -4,9 +4,6 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
-// extern SSL_CTX *ctx;
-// extern SSL *ssl;
-
 #include <fcntl.h>
 
 /**
