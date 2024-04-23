@@ -608,7 +608,7 @@ void *recv_speed_calc(void *arg){
     while(1){
         if (receive_done) break;
         if (gettimeofday(&tv, NULL) == 0){
-            if (tv.tv_sec != secs){
+            if (tv.tv_sec != secs && bytes_received > 0){
                 secs = tv.tv_sec;
                 size_t Mbytes = bytes_received >> 20;
                 printf("\rreceiving speed: %ld MB/s                ", Mbytes);
