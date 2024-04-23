@@ -603,17 +603,25 @@ void recv_over(){
 }
 
 void *recv_speed_calc(void *arg){
+    size_t sec_used = 0;
+    size_t Mbytes_received = 0;
     while(1){
-        if (receive_done) pthread_exit(NULL);
+        if (receive_done) break;
         if (gettimeofday(&tv, NULL) == 0){
             if (tv.tv_sec != secs){
                 secs = tv.tv_sec;
-                printf("\rreceiving speed: %ld MB/s                ", bytes_received >> 20);
+                size_t Mbytes = bytes_received >> 20;
+                printf("\rreceiving speed: %ld MB/s                ", Mbytes);
                 fflush(stdout);
+                sec_used ++;
+                Mbytes_received += Mbytes;
                 bytes_received = 0;
             }
         }
     }
+    // calculate the average receive speed
+    size_t avg_speed = Mbytes_received / sec_used;
+    printf("\nAverage receiving speed: %ld MB/s in %ld seconds\n", avg_speed, sec_used);
     pthread_exit(NULL);
 }
 
