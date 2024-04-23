@@ -620,8 +620,10 @@ void *recv_speed_calc(void *arg){
         }
     }
     // calculate the average receive speed
-    size_t avg_speed = Mbytes_received / sec_used;
-    printf("\nAverage receiving speed: %ld MB/s in %ld seconds\n", avg_speed, sec_used);
+    if (sec_used != 0){
+        size_t avg_speed = Mbytes_received / sec_used;
+        printf("\nAverage receiving speed: %ld MB/s in %ld seconds\n", avg_speed, sec_used);
+    }
     pthread_exit(NULL);
 }
 
